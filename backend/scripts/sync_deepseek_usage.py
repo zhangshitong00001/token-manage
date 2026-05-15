@@ -20,13 +20,13 @@ from datetime import date, datetime
 
 import requests
 
-# ── 数据库配置 ──
+# ── 数据库配置（从环境变量读取，不留明文）──
 DB_CONFIG = {
-    "host": "127.0.0.1",
-    "port": 5432,
-    "dbname": "tokenmanager",
-    "user": "zhangshitong",
-    "password": "123456",
+    "host": os.environ.get("DB_HOST", "127.0.0.1"),
+    "port": int(os.environ.get("DB_PORT", "5432")),
+    "dbname": os.environ.get("DB_NAME", "tokenmanager"),
+    "user": os.environ.get("DB_USER", "zhangshitong"),
+    "password": os.environ.get("DB_PASSWORD", ""),
 }
 
 DEEPSEEK_BASE = "https://platform.deepseek.com/api/v0/usage"

@@ -1,4 +1,5 @@
 """初始化种子数据"""
+import os
 from app.database import SessionLocal
 from app.models import User
 from app.models.package import TokenPackage
@@ -9,11 +10,15 @@ db = SessionLocal()
 
 admin = db.query(User).filter(User.role == 'admin').first()
 if not admin:
+    # 管理员初始密码从环境变量读取，若无则强制为空（不允许登录）
+    default_pwd = os.environ.get("ADMIN_INIT_PASSWORD", "")
+    if not default_pwd:
+        print("⚠️  未设置 ADMIN_INIT_PASSWORD 环境变量，管理员初始密码为空！")
     admin = User(
         phone='13800000000',
         email='admin@tokenmanager.com',
         nickname='管理员',
-        password_hash=hash_password('admin123'),
+        password_hash=hash_password(default_pwd) if default_pwd else "",
         token_balance=999999999,
         role='admin',
     )

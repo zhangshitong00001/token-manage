@@ -5,15 +5,15 @@ from pydantic_settings import BaseSettings
 
 class Settings(BaseSettings):
     # 数据库（从 .env 读取，代码里不留明文）
-    DATABASE_URL: str = "postgresql+psycopg2://zhangshitong:123456@localhost:5432/tokenmanager"
+    DATABASE_URL: str = ""
 
-    # JWT
-    SECRET_KEY: str = "tokenmanager-secret-key-change-in-production"
+    # JWT（从 .env 读取，启动时自动生成强密钥）
+    SECRET_KEY: str = ""
     ALGORITHM: str = "HS256"
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24  # 1天（原7天，缩短降低泄露风险）
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24  # 1天
 
-    # Redis
-    REDIS_URL: str = "redis://:qq981997@localhost:6379/1"
+    # Redis（从 .env 读取）
+    REDIS_URL: str = ""
 
     # 支付（测试环境留空）
     WECHAT_APP_ID: str = ""
