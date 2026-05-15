@@ -32,6 +32,11 @@ def send_email_code(to_email: str, code: str) -> None:
     msg["Subject"] = subject
     msg.attach(MIMEText(body, "html", "utf-8"))
 
+    # 获取密码：优先 mail_auth_code，回退 SMTP_PASSWORD
+    password = settings.mail_auth_code or settings.SMTP_PASSWORD
+    if not password:
+        raise RuntimeError("SMTP 密码未配置，请在 .env 中设置 mail_auth_code")
+
     with smtplib.SMTP_SSL(settings.SMTP_HOST, settings.SMTP_PORT) as server:
-        server.login(settings.SMTP_USER, settings.SMTP_PASSWORD)
+        server.login(settings.SMTP_USER, password)
         server.sendmail(settings.SMTP_USER, to_email, msg.as_string())

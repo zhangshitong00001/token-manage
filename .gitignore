@@ -11,3 +11,4 @@ venv/
 logs/
 .vscode/
 large_file.bin
+.env

@@ -34,11 +34,13 @@ class Settings(BaseSettings):
     SMTP_HOST: str = "smtp.163.com"
     SMTP_PORT: int = 465
     SMTP_USER: str = "zst_9609_4557@163.com"
-    SMTP_PASSWORD: str = "QAutC3BiuSgFacNq"
+    SMTP_PASSWORD: str = ""
+    mail_auth_code: str = ""  # 兼容名，与 SMTP_PASSWORD 任选一个
     ADMIN_EMAIL: str = "zst_9609_4557@163.com"  # 唯一允许登录的邮箱
 
     class Config:
         env_file = ".env"
+        env_file_encoding = "utf-8"
 
 
 settings = Settings()
