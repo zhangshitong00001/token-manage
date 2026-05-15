@@ -1,23 +1,35 @@
-"""API路由 - Token消耗记录（Hermes agent内部调用）"""
-from fastapi import APIRouter, Depends, HTTPException
+"""API路由 - Token消耗记录（Hermes agent内部调用，需鉴权）"""
+
+from fastapi import APIRouter, Depends, HTTPException, Header
 from sqlalchemy.orm import Session
-from datetime import date, datetime
+from datetime import datetime
+from typing import Optional
 
 from app.database import get_db
 from app.models import User, TokenUsage
 from app.schemas import UsageRecord, UsageRecordResponse
+from app.core.deps import get_current_user
 from app.services.token_calc import calculate_cost
 
 router = APIRouter(prefix="/api/usage", tags=["Token消耗"])
 
+# 内部 API Key（用于 Hermes agent 调用）
+USAGE_API_KEY = "hermes-internal-token-manager-key-2026"
+
+
+def verify_usage_api_key(x_api_key: Optional[str] = Header(None)):
+    """验证内部 API Key"""
+    if x_api_key != USAGE_API_KEY:
+        raise HTTPException(status_code=403, detail="无权访问")
+
 
 @router.post("/record", response_model=UsageRecordResponse)
-def record_usage(data: UsageRecord, db: Session = Depends(get_db)):
-    """记录Token消耗（供Hermes agent内部调用）
-    - 自动计算应扣额度
-    - 检查余额，扣减并写入记录
-    - 通过request_id防重
-    """
+def record_usage(
+    data: UsageRecord,
+    db: Session = Depends(get_db),
+    _=Depends(verify_usage_api_key),
+):
+    """记录Token消耗（需 X-API-Key 头，仅限内部调用）"""
     # 幂等检查
     existing = db.query(TokenUsage).filter(TokenUsage.request_id == data.request_id).first()
     if existing:
@@ -66,13 +78,19 @@ def record_usage(data: UsageRecord, db: Session = Depends(get_db)):
 def get_daily_usage(
     user_id: int,
     usage_date: str,
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """获取指定用户某日汇总（管理端用）"""
+    """获取指定用户某日汇总（需登录，只能查自己的）"""
+    # 只能查自己的
+    if current_user.id != user_id and current_user.role != "admin":
+        raise HTTPException(status_code=403, detail="无权查看其他用户的消耗")
+
     try:
         dt = datetime.strptime(usage_date, "%Y-%m-%d")
     except ValueError:
         raise HTTPException(status_code=400, detail="日期格式错误，请使用 YYYY-MM-DD")
+
     records = db.query(TokenUsage).filter(
         TokenUsage.user_id == user_id,
         TokenUsage.usage_time >= dt,
