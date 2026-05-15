@@ -30,6 +30,13 @@ class Settings(BaseSettings):
     DEFAULT_INPUT_PRICE_PER_K: float = 0.0001  # 每千输入token 0.0001元
     DEFAULT_OUTPUT_PRICE_PER_K: float = 0.0004  # 每千输出token 0.0004元
 
+    # 邮箱 - 用于管理员登录验证码
+    SMTP_HOST: str = "smtp.163.com"
+    SMTP_PORT: int = 465
+    SMTP_USER: str = "zst_9609_4557@163.com"
+    SMTP_PASSWORD: str = "QAutC3BiuSgFacNq"
+    ADMIN_EMAIL: str = "zst_9609_4557@163.com"  # 唯一允许登录的邮箱
+
     class Config:
         env_file = ".env"
 

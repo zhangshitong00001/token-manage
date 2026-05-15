@@ -1,6 +1,6 @@
 import React, { useState, useRef } from 'react'
 import { Form, Input, Button, Card, message, Typography, Space, Alert } from 'antd'
-import { PhoneOutlined, SafetyCertificateOutlined, LockOutlined } from '@ant-design/icons'
+import { MailOutlined, SafetyCertificateOutlined, LockOutlined } from '@ant-design/icons'
 import api from '../api'
 
 const { Title, Text } = Typography
@@ -9,7 +9,7 @@ export default function Login({ onLogin }) {
   const [loading, setLoading] = useState(false)
   const [codeLoading, setCodeLoading] = useState(false)
   const [countdown, setCountdown] = useState(0)
-  const [phone, setPhone] = useState('')
+  const [email, setEmail] = useState('')
   const timerRef = useRef(null)
 
   const startCountdown = () => {
@@ -26,24 +26,29 @@ export default function Login({ onLogin }) {
   }
 
   const handleSendCode = async () => {
-    if (!phone || phone.length < 11) {
-      message.warning('请输入正确的手机号')
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      message.warning('请输入正确的邮箱地址')
       return
     }
     setCodeLoading(true)
     try {
-      const res = await api.post('/auth/admin/send-code', { phone })
+      const res = await api.post('/auth/admin/send-code', { email })
       message.success({
-        content: `验证码已发送到 ${phone.replace(/(\d{3})\d{4}(\d{4})/, '$1****$2')}`,
+        content: `验证码已发送到 ${email}`,
         duration: 3,
       })
-      // 开发环境：显示验证码方便测试
+      // 开发/发送失败时返回调试码
       if (res.debug_code) {
-        message.info(`测试验证码: ${res.debug_code}`, 10)
+        message.info(`调试验证码: ${res.debug_code}`, 10)
       }
       startCountdown()
     } catch (e) {
-      message.error(e.response?.data?.detail || '发送失败')
+      const detail = e.response?.data?.detail || '发送失败'
+      if (detail.includes('未注册')) {
+        message.error('该邮箱未注册为管理员')
+      } else {
+        message.error(detail)
+      }
     } finally {
       setCodeLoading(false)
     }
@@ -53,7 +58,7 @@ export default function Login({ onLogin }) {
     setLoading(true)
     try {
       const res = await api.post('/auth/admin/login', {
-        phone: values.phone,
+        email: values.email,
         code: values.code,
       })
       if (res.user?.role !== 'admin') {
@@ -130,35 +135,34 @@ export default function Login({ onLogin }) {
           <Title level={3} style={{ margin: 0 }}>
             TokenManager
           </Title>
-          <Text type="secondary">管理后台 · 短信验证登录</Text>
+          <Text type="secondary">管理后台 · 邮箱验证登录</Text>
         </div>
 
         <Form
           onFinish={onFinish}
           size="large"
           layout="vertical"
-          initialValues={{ phone: '13361883801' }}
+          initialValues={{ email: 'zst_9609_4557@163.com' }}
         >
           <Form.Item
-            name="phone"
-            label="手机号"
+            name="email"
+            label="管理员邮箱"
             rules={[
-              { required: true, message: '请输入手机号' },
-              { pattern: /^1\d{10}$/, message: '手机号格式不正确' },
+              { required: true, message: '请输入邮箱' },
+              { type: 'email', message: '邮箱格式不正确' },
             ]}
           >
             <Input
-              prefix={<PhoneOutlined style={{ color: '#bfbfbf' }} />}
-              placeholder="请输入管理员手机号"
-              maxLength={11}
+              prefix={<MailOutlined style={{ color: '#bfbfbf' }} />}
+              placeholder="请输入管理员邮箱"
               style={{ borderRadius: 8, height: 44 }}
-              onChange={(e) => setPhone(e.target.value)}
+              onChange={(e) => setEmail(e.target.value)}
             />
           </Form.Item>
 
           <Form.Item
             name="code"
-            label="短信验证码"
+            label="邮箱验证码"
             rules={[
               { required: true, message: '请输入验证码' },
               { len: 6, message: '验证码为6位数字' },
@@ -212,7 +216,7 @@ export default function Login({ onLogin }) {
         </Form>
 
         <Alert
-          message="测试提示：验证码将显示在页面提示中"
+          message="验证码将发送至 zst_9609_4557@163.com 邮箱"
           type="info"
           showIcon
           style={{ borderRadius: 8, fontSize: 12, marginTop: 8 }}

@@ -1,4 +1,5 @@
-"""API路由 - 认证"""
+"""API路由 - 认证（仅邮箱验证码登录）"""
+
 from fastapi import APIRouter, Depends, HTTPException, Body
 from sqlalchemy.orm import Session
 
@@ -7,8 +8,13 @@ from app.models import User
 from app.schemas import UserRegister, UserLogin, TokenResponse, UserProfile
 from app.core.security import hash_password, verify_password, create_access_token
 from app.core.redis_client import generate_code, save_sms_code, verify_sms_code, set_admin_session
+from app.core.email_client import send_email_code
+from app.config import settings
 
 router = APIRouter(prefix="/api/auth", tags=["认证"])
+
+# 管理员邮箱（唯一允许登录）
+ADMIN_EMAIL = settings.ADMIN_EMAIL
 
 
 @router.post("/register", response_model=TokenResponse)
@@ -53,28 +59,39 @@ def login(data: UserLogin, db: Session = Depends(get_db)):
     return TokenResponse(access_token=token, user=UserProfile.model_validate(user))
 
 
-# ---- 管理员 SMS 登录（仅限 13361883801）----
+# ---- 管理员邮箱验证码登录（唯一方式）----
 
 @router.post("/admin/send-code")
-def admin_send_code(phone: str = Body(..., embed=True)):
-    """管理员发送验证码"""
-    if phone != "13361883801":
-        raise HTTPException(status_code=404, detail="该手机号未注册为管理员")
+def admin_send_code(email: str = Body(..., embed=True)):
+    """发送管理员登录验证码到邮箱"""
+    if email != ADMIN_EMAIL:
+        raise HTTPException(status_code=404, detail="该邮箱未注册为管理员")
+
     code = generate_code()
-    save_sms_code(phone, code)
-    print(f"[SMS] 验证码已发送到 {phone}: {code}")
-    return {"message": "验证码已发送", "debug_code": code}
+    save_sms_code(email, code)
+
+    try:
+        send_email_code(email, code)
+        return {"message": f"验证码已发送到 {email}"}
+    except Exception as e:
+        print(f"[Email] 发送失败: {e}")
+        # 发送失败时返回 debug_code 以便测试
+        return {"message": "发送失败（开发模式）", "debug_code": code}
 
 
 @router.post("/admin/login", response_model=TokenResponse)
-def admin_login(phone: str = Body(...), code: str = Body(...), db: Session = Depends(get_db)):
-    """管理员验证码登录"""
-    if phone != "13361883801":
-        raise HTTPException(status_code=401, detail="该手机号无管理权限")
-    if not verify_sms_code(phone, code):
+def admin_login(
+    email: str = Body(...),
+    code: str = Body(...),
+    db: Session = Depends(get_db),
+):
+    """管理员邮箱验证码登录"""
+    if email != ADMIN_EMAIL:
+        raise HTTPException(status_code=401, detail="该邮箱无管理权限")
+    if not verify_sms_code(email, code):
         raise HTTPException(status_code=401, detail="验证码错误或已过期")
 
-    user = db.query(User).filter(User.phone == phone, User.role == "admin").first()
+    user = db.query(User).filter(User.email == email, User.role == "admin").first()
     if not user:
         raise HTTPException(status_code=404, detail="管理员不存在")
     if user.status == 0:
