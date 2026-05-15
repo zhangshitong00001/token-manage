@@ -1,0 +1,110 @@
+<template>
+  <div class="page">
+    <!-- 个人信息 -->
+    <div class="card" style="text-align:center;padding:24px;">
+      <van-icon name="contact-o" size="48" color="#1989fa" />
+      <h3 style="margin:8px 0;">{{ userInfo.nickname || '用户' }}</h3>
+      <p style="color:#999;font-size:13px;">
+        {{ userInfo.phone || userInfo.email || '未绑定手机/邮箱' }}
+      </p>
+    </div>
+
+    <!-- 余额信息 -->
+    <div class="card">
+      <van-cell title="Token 余额" :value="formatNumber(userInfo.token_balance || 0)" />
+      <van-cell title="角色" :value="userInfo.role === 'admin' ? '管理员' : '普通用户'" />
+      <van-cell title="注册时间" :value="formatDate(userInfo.created_at)" />
+    </div>
+
+    <!-- DeepSeek API Key -->
+    <div class="card">
+      <van-field
+        v-model="apiKey"
+        label="DeepSeek Key"
+        placeholder="sk-xxxxxxxxxxxxxxxx"
+        :type="showKey ? 'text' : 'password'"
+        :right-icon="showKey ? 'eye-o' : 'closed-eye'"
+        @click-right-icon="showKey = !showKey"
+      />
+      <van-button
+        size="small"
+        type="primary"
+        plain
+        @click="bindKey"
+        :loading="binding"
+        style="margin:8px 0 0 16px;"
+      >
+        保存
+      </van-button>
+    </div>
+
+    <!-- 退出登录 -->
+    <van-button
+      block
+      round
+      type="danger"
+      plain
+      style="margin-top:24px;"
+      @click="onLogout"
+    >
+      退出登录
+    </van-button>
+  </div>
+</template>
+
+<script setup>
+import { ref, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
+import { showToast } from 'vant'
+import api, { logAction } from '../utils/api.js'
+
+const router = useRouter()
+const userInfo = ref({})
+const apiKey = ref('')
+const showKey = ref(false)
+const binding = ref(false)
+
+function formatNumber(n) {
+  if (n >= 100000000) return (n / 100000000).toFixed(1) + '亿'
+  if (n >= 10000) return (n / 10000).toFixed(1) + '万'
+  return n.toLocaleString()
+}
+
+function formatDate(d) {
+  if (!d) return ''
+  return d.slice(0, 10)
+}
+
+async function bindKey() {
+  if (!apiKey.value) return
+  binding.value = true
+  try {
+    await api.put('/user/deepseek-key', { deepseek_api_key: apiKey.value })
+    logAction('bind_key', '/profile', '绑定DeepSeek API Key')
+    showToast('绑定成功')
+  } catch (e) {
+    logAction('bind_key_failed', '/profile', 'DeepSeek Key绑定失败')
+    showToast('绑定失败')
+  } finally {
+    binding.value = false
+  }
+}
+
+function onLogout() {
+  logAction('logout', '/profile', `用户退出登录: ${userInfo.value.nickname}`)
+  localStorage.removeItem('token')
+  localStorage.removeItem('user')
+  router.push('/login')
+  showToast('已退出登录')
+}
+
+onMounted(async () => {
+  try {
+    const profile = await api.get('/user/profile')
+    userInfo.value = profile
+    apiKey.value = profile.deepseek_api_key || ''
+  } catch (e) {
+    console.error(e)
+  }
+})
+</script>

@@ -1,0 +1,37 @@
+"""应用配置"""
+
+from pydantic_settings import BaseSettings
+
+
+class Settings(BaseSettings):
+    # 数据库
+    DATABASE_URL: str = "postgresql+psycopg2://zhangshitong:123456@localhost:5432/tokenmanager"
+
+    # JWT
+    SECRET_KEY: str = "tokenmanager-secret-key-change-in-production"
+    ALGORITHM: str = "HS256"
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 7  # 7天（用户端）
+
+    # Redis
+    REDIS_URL: str = "redis://:qq981997@localhost:6379/1"
+
+    # 支付（测试环境）
+    WECHAT_APP_ID: str = ""
+    WECHAT_MCH_ID: str = ""
+    WECHAT_API_KEY: str = ""
+    WECHAT_NOTIFY_URL: str = "https://your-domain.com/api/order/callback/wechat"
+
+    ALIPAY_APP_ID: str = ""
+    ALIPAY_PRIVATE_KEY: str = ""
+    ALIPAY_PUBLIC_KEY: str = ""
+    ALIPAY_NOTIFY_URL: str = "https://your-domain.com/api/order/callback/alipay"
+
+    # Token 单价（默认值，可通过管理后台修改）
+    DEFAULT_INPUT_PRICE_PER_K: float = 0.0001  # 每千输入token 0.0001元
+    DEFAULT_OUTPUT_PRICE_PER_K: float = 0.0004  # 每千输出token 0.0004元
+
+    class Config:
+        env_file = ".env"
+
+
+settings = Settings()
