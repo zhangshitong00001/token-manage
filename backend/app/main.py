@@ -21,13 +21,19 @@ Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="TokenManager API", version="1.0.0")
 
-# CORS
+# CORS — 严格限制来源
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[
+        "http://120.77.10.212",
+        "http://localhost:8000",
+        "http://localhost:3001",
+        "http://127.0.0.1:8000",
+        "http://127.0.0.1:3001",
+    ],
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type"],
 )
 
 # 全局请求日志中间件（记录所有API调用）
@@ -126,15 +132,18 @@ def startup():
                 admin.phone = "13361883801"
                 db.commit()
         else:
+            import secrets
+            temp_password = secrets.token_urlsafe(12)
             db.add(User(
                 phone="13361883801",
                 email="admin@tokenmanager.com",
                 nickname="管理员",
-                password_hash=hash_password("admin123"),
+                password_hash=hash_password(temp_password),
                 token_balance=999999999,
                 role="admin",
             ))
             db.commit()
+            print(f"[启动] 管理员已创建，临时密码: {temp_password}（请立即修改）")
         if not db.query(PriceConfig).first():
             db.add(PriceConfig(input_price_per_k=0.0001, output_price_per_k=0.0004))
             db.commit()

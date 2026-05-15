@@ -133,9 +133,16 @@ def admin_confirm_payment(
 
 
 @router.get("/status")
-def get_order_status(order_no: str, db: Session = Depends(get_db)):
-    """查询订单支付状态"""
-    order = db.query(RechargeOrder).filter(RechargeOrder.order_no == order_no).first()
+def get_order_status(
+    order_no: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """查询订单支付状态（需登录，只能查自己订单）"""
+    order = db.query(RechargeOrder).filter(
+        RechargeOrder.order_no == order_no,
+        RechargeOrder.user_id == current_user.id,
+    ).first()
     if not order:
         raise HTTPException(status_code=404, detail="订单不存在")
     return OrderOut.model_validate(order)
