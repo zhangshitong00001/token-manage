@@ -1,0 +1,11 @@
+This is a normal test fixture file with known content.
+It contains multiple lines of text that tests can check against.
+
+Line 3: The quick brown fox jumps over the lazy dog.
+Line 4: 1234567890 - Numbers are also included.
+Line 5: Special characters: !@#$%^&*()_+-=[]{}|;':",./<>?
+Line 6: Unicode support: 你好，世界！日本語 한국어
+Line 7: The answer to life, the universe, and everything is 42.
+Line 8: This file has exactly 10 lines (including this one).
+Line 9: Tests can validate reading, hashing, checksums, or content parsing.
+Line 10: End of normal fixture file.
