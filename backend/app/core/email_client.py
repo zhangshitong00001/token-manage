@@ -33,7 +33,7 @@ def send_email_code(to_email: str, code: str) -> None:
     msg.attach(MIMEText(body, "html", "utf-8"))
 
     # 获取密码：优先 mail_auth_code，回退 SMTP_PASSWORD
-    password = settings.mail_auth_code or settings.SMTP_PASSWORD
+    password = settings.MAIL_AUTH_CODE or settings.SMTP_PASSWORD
     if not password:
         raise RuntimeError("SMTP 密码未配置，请在 .env 中设置 mail_auth_code")
 
