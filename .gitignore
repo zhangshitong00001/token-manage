@@ -10,3 +10,4 @@ venv/
 *.swp
 logs/
 .vscode/
+large_file.bin
