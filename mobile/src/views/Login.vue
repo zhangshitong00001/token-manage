@@ -12,7 +12,7 @@
           name="email"
           label="邮箱"
           placeholder="请输入邮箱"
-          :rules="[{ required: true, message: '请输入邮箱' }, { pattern: /^[^\s@]+@[^\s@]+\.[^\s@]+$/, message: '邮箱格式不正确' }]"
+          :rules="[{ required: true, message: '请输入邮箱' }, { pattern: /@/, message: '邮箱格式不正确' }]"
         >
           <template #button>
             <van-button
@@ -59,7 +59,7 @@ const sendingCode = ref(false)
 const countdown = ref(0)
 
 const canSendCode = computed(() => {
-  return countdown.value <= 0 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.value)
+  return countdown.value <= 0 && email.value.includes('@')
 })
 
 const sendCodeText = computed(() => {
