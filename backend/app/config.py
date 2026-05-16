@@ -40,6 +40,9 @@ class Settings(BaseSettings):
     # 安全（从 .env 读取）
     JWT_SECRET_KEY: str = ""   # 替换 SECRET_KEY，自动生成强密钥
 
+    # DeepSeek
+    DEEPSEEK_API_KEY: str = ""
+
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"

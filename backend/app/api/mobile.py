@@ -7,6 +7,7 @@ from datetime import date, timedelta
 from app.database import get_db
 from app.models import User, TokenUsage, SystemDailyUsage
 from app.core.deps import get_current_user
+from app.config import settings
 
 router = APIRouter(prefix="/api/mobile", tags=["手机端"])
 
@@ -51,6 +52,39 @@ def get_usage_trend(
             "total_output": sum(r.output_tokens for r in records),
         })
     return {"days": days, "trend": trend}
+
+
+import requests
+
+
+@router.get("/deepseek/balance")
+def get_deepseek_balance(
+    current_user: User = Depends(get_current_user),
+):
+    """查询 DeepSeek 账户实时余额"""
+    api_key = settings.DEEPSEEK_API_KEY
+    if not api_key:
+        return {"available": False, "error": "未配置 DeepSeek API Key"}
+    try:
+        resp = requests.get(
+            "https://api.deepseek.com/user/balance",
+            headers={"Authorization": f"Bearer {api_key}", "Accept": "application/json"},
+            timeout=10,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        balances = data.get("balance_infos", [])
+        cny = next((b for b in balances if b.get("currency") == "CNY"), {})
+        usd = next((b for b in balances if b.get("currency") == "USD"), {})
+        return {
+            "available": data.get("is_available", False),
+            "cny_balance": float(cny.get("total_balance", 0)),
+            "cny_granted": float(cny.get("granted_balance", 0)),
+            "cny_topped_up": float(cny.get("topped_up_balance", 0)),
+            "usd_balance": float(usd.get("total_balance", 0)),
+        }
+    except Exception as e:
+        return {"available": False, "error": str(e)}
 
 
 # ---- 系统级消耗（与后台管理后台SystemUsage保持一致）----
