@@ -91,15 +91,28 @@ async function showOrdersSheet() {
 
 async function loadData() {
   try {
-    const [profile, usage, trendData] = await Promise.all([
+    const [profile, sysDaily, sysSummary] = await Promise.all([
       api.get('/user/profile'),
-      api.get('/mobile/usage/today'),
-      api.get('/mobile/usage/trend?days=7'),
+      api.get('/mobile/system/usage/daily?days=7'),
+      api.get('/mobile/system/usage/summary?days=7'),
     ])
     userInfo.value = profile
-    todayUsage.value = usage
-    trend.value = trendData.trend
-    trendMax.value = Math.max(...trendData.trend.map(t => t.total_cost), 1)
+
+    // 今日消耗用最近一天的数据
+    const items = sysDaily.items || []
+    const todayItem = items.find(i => i.stats_date === new Date().toISOString().slice(0, 10))
+    todayUsage.value = {
+      today_cost: todayItem?.total_tokens || (items[0]?.total_tokens || 0),
+      today_input: todayItem?.total_input_tokens || (items[0]?.total_input_tokens || 0),
+      today_output: todayItem?.total_output_tokens || (items[0]?.total_output_tokens || 0),
+    }
+
+    // 趋势图
+    trend.value = items.reverse().map(t => ({
+      date: t.stats_date,
+      total_cost: t.total_tokens,
+    }))
+    trendMax.value = Math.max(...trend.value.map(t => t.total_cost), 1)
   } catch (e) {
     console.error('加载数据失败', e)
   }

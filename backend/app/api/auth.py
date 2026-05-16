@@ -74,6 +74,73 @@ def login(data: UserLogin, db: Session = Depends(get_db)):
     return TokenResponse(access_token=token, user=UserProfile.model_validate(user))
 
 
+# ---- 通用邮箱验证码登录（H5端使用）----
+
+@router.post("/send-code")
+def send_code(email: str = Body(..., embed=True), db: Session = Depends(get_db)):
+    """发送登录验证码到邮箱（任何已注册邮箱均可）"""
+    # 频率限制：每60秒最多发1次
+    allowed, remaining = check_rate_limit(f"send_code:{email}", max_attempts=3, window_seconds=300)
+    if not allowed:
+        raise HTTPException(
+            status_code=429,
+            detail="验证码发送过于频繁，请5分钟后再试",
+        )
+
+    code = generate_code()
+    save_sms_code(email, code)
+
+    try:
+        send_email_code(email, code)
+        return {"message": f"验证码已发送到 {email}"}
+    except Exception as e:
+        print(f"[Email] 发送失败: {e}")
+        return {"message": "发送失败（开发模式）", "debug_code": code}
+
+
+@router.post("/code-login", response_model=TokenResponse)
+def code_login(
+    email: str = Body(...),
+    code: str = Body(...),
+    db: Session = Depends(get_db),
+):
+    """邮箱验证码登录（验证码有效期内可登录）"""
+    # 频率限制：同一邮箱每5分钟最多尝试10次
+    allowed, remaining = check_login_attempt(f"code_login:{email}")
+    if not allowed:
+        raise HTTPException(
+            status_code=429,
+            detail="登录尝试过于频繁，请5分钟后再试",
+        )
+
+    if not verify_sms_code(email, code):
+        record_login_failure(f"code_login:{email}")
+        raise HTTPException(status_code=401, detail="验证码错误或已过期")
+
+    # 查找或自动创建用户
+    user = db.query(User).filter(User.email == email).first()
+    if not user:
+        # 邮箱未注册，自动创建
+        nickname = email.split("@")[0]
+        user = User(
+            email=email,
+            nickname=nickname,
+            password_hash="",  # 验证码登录用户无需密码
+            token_balance=100000,
+            role="user",
+            status=1,
+        )
+        db.add(user)
+        db.commit()
+        db.refresh(user)
+
+    if user.status == 0:
+        raise HTTPException(status_code=403, detail="账号已被禁用")
+
+    token = create_access_token({"sub": str(user.id), "role": user.role})
+    return TokenResponse(access_token=token, user=UserProfile.model_validate(user))
+
+
 # ---- 管理员邮箱验证码登录（唯一方式）----
 
 @router.post("/admin/send-code")
