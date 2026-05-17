@@ -16,26 +16,25 @@
       <van-cell title="注册时间" :value="formatDate(userInfo.created_at)" />
     </div>
 
-    <!-- DeepSeek API Key -->
+    <!-- DeepSeek API Key（管理员显示真实 key，普通用户显示自己的） -->
     <div class="card">
       <van-field
         v-model="apiKey"
-        label="DeepSeek Key"
-        placeholder="sk-xxx...xxxx"
+        :label="userInfo.role === 'admin' ? '🤖 Hermes Agent Key' : 'DeepSeek Key'"
+        :placeholder="userInfo.role === 'admin' ? '正在加载...' : 'sk-xxx...xxxx'"
         :type="showKey ? 'text' : 'password'"
         :right-icon="showKey ? 'eye-o' : 'closed-eye'"
         @click-right-icon="showKey = !showKey"
+        readonly
       />
-      <van-button
-        size="small"
-        type="primary"
-        plain
-        @click="bindKey"
-        :loading="binding"
-        style="margin:8px 0 0 16px;"
-      >
-        保存
-      </van-button>
+      <div style="padding:0 16px 12px;font-size:12px;color:#999;">
+        <span v-if="userInfo.role === 'admin'">
+          ⚡ Hermes Agent 正在使用的 DeepSeek API Key（只读）
+        </span>
+        <span v-else>
+          绑定你自己的 DeepSeek Key 可查看私有消耗（暂未开放）
+        </span>
+      </div>
     </div>
 
     <!-- 模型偏好 -->
@@ -200,11 +199,15 @@ onMounted(async () => {
     userInfo.value = profile
     apiKey.value = profile.deepseek_api_key || ''
     preferredModel.value = profile.preferred_model || 'deepseek-v4-flash'
-    // 如果是管理员，查询 Hermes Agent 当前模型
+    // 如果是管理员，查询 Hermes Agent 当前模型和 API Key
     if (profile.role === 'admin') {
       try {
         const h = await api.get('/user/hermes-model')
         hermesModel.value = h.model || 'deepseek-v4-flash'
+      } catch (_) {}
+      try {
+        const k = await api.get('/user/hermes-api-key')
+        apiKey.value = k.api_key || ''
       } catch (_) {}
     }
   } catch (e) {
