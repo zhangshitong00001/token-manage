@@ -346,19 +346,29 @@ async def upload_file(
     file: UploadFile = File(...),
     admin: User = Depends(get_admin_user),
 ):
-    """上传文件到服务器（管理员专用）"""
+    """上传文件到服务器（管理员专用，最大500MB）"""
     import aiofiles
 
+    max_size = 500 * 1024 * 1024
     file_path = UPLOAD_DIR / file.filename
 
-    # 流式写入，支持大文件
+    # 流式写入，避免大文件占内存
+    written = 0
     async with aiofiles.open(str(file_path), "wb") as f:
-        content = await file.read()
-        await f.write(content)
+        while True:
+            chunk = await file.read(8 * 1024 * 1024)  # 每次 8MB
+            if not chunk:
+                break
+            written += len(chunk)
+            if written > max_size:
+                await f.close()
+                file_path.unlink(missing_ok=True)
+                raise HTTPException(status_code=413, detail="文件超过500MB上限")
+            await f.write(chunk)
 
-    size_mb = len(content) / 1024 / 1024
+    size_mb = written / 1024 / 1024
     return {
-        "message": f"上传成功",
+        "message": "上传成功",
         "filename": file.filename,
         "size_mb": round(size_mb, 2),
         "path": str(file_path),
