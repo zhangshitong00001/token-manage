@@ -1,11 +1,12 @@
 """API路由 - 管理后台"""
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, UploadFile, File, HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from datetime import date, timedelta, datetime
 from typing import Optional
-
-from fastapi import HTTPException
+import os
+import shutil
+from pathlib import Path
 import requests
 from app.config import settings
 from app.database import get_db
@@ -332,3 +333,33 @@ def admin_deepseek_balance(admin: User = Depends(get_admin_user)):
         }
     except Exception as e:
         return {"available": False, "error": str(e)}
+
+
+# ---- 文件上传（临时，供上传DS源码等）----
+
+UPLOAD_DIR = Path("/root/uploads")
+UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+
+
+@router.post("/upload")
+async def upload_file(
+    file: UploadFile = File(...),
+    admin: User = Depends(get_admin_user),
+):
+    """上传文件到服务器（管理员专用）"""
+    import aiofiles
+
+    file_path = UPLOAD_DIR / file.filename
+
+    # 流式写入，支持大文件
+    async with aiofiles.open(str(file_path), "wb") as f:
+        content = await file.read()
+        await f.write(content)
+
+    size_mb = len(content) / 1024 / 1024
+    return {
+        "message": f"上传成功",
+        "filename": file.filename,
+        "size_mb": round(size_mb, 2),
+        "path": str(file_path),
+    }
