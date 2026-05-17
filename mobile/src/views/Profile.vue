@@ -16,20 +16,20 @@
       <van-cell title="注册时间" :value="formatDate(userInfo.created_at)" />
     </div>
 
-    <!-- DeepSeek API Key（管理员显示真实 key，普通用户显示自己的） -->
+    <!-- DeepSeek API Key（管理员显示脱敏，点击眼睛才解密） -->
     <div class="card">
       <van-field
-        v-model="apiKey"
+        v-model="apiKeyDisplay"
         :label="userInfo.role === 'admin' ? '🤖 Hermes Agent Key' : 'DeepSeek Key'"
         :placeholder="userInfo.role === 'admin' ? '正在加载...' : 'sk-xxx...xxxx'"
         :type="showKey ? 'text' : 'password'"
         :right-icon="showKey ? 'eye-o' : 'closed-eye'"
-        @click-right-icon="showKey = !showKey"
+        @click-right-icon="toggleReveal"
         readonly
       />
       <div style="padding:0 16px 12px;font-size:12px;color:#999;">
         <span v-if="userInfo.role === 'admin'">
-          ⚡ Hermes Agent 正在使用的 DeepSeek API Key（只读）
+          ⚡ 点眼睛图标可查看完整 Key（仅当前会话可见）
         </span>
         <span v-else>
           绑定你自己的 DeepSeek Key 可查看私有消耗（暂未开放）
@@ -127,9 +127,10 @@ import api, { logAction } from '../utils/api.js'
 
 const router = useRouter()
 const userInfo = ref({})
-const apiKey = ref('')
+const apiKeyDisplay = ref('')  // 脱敏显示
+const apiKeyFull = ref('')     // 完整 Key（仅点眼睛后获取）
 const showKey = ref(false)
-const binding = ref(false)
+const revealing = ref(false)
 const preferredModel = ref('deepseek-v4-flash')
 const hermesModel = ref('deepseek-v4-flash')
 const switchingHermes = ref(false)
@@ -145,18 +146,26 @@ function formatDate(d) {
   return d.slice(0, 10)
 }
 
-async function bindKey() {
-  if (!apiKey.value) return
-  binding.value = true
-  try {
-    await api.put('/user/deepseek-key', { deepseek_api_key: apiKey.value })
-    logAction('bind_key', '/profile', '绑定DeepSeek API Key')
-    showToast('绑定成功')
-  } catch (e) {
-    logAction('bind_key_failed', '/profile', 'DeepSeek Key绑定失败')
-    showToast('绑定失败')
-  } finally {
-    binding.value = false
+async function toggleReveal() {
+  if (!apiKeyFull.value) {
+    // 还没有完整 Key，去获取
+    if (revealing.value) return
+    revealing.value = true
+    try {
+      const res = await api.post('/user/hermes-api-key/reveal')
+      apiKeyFull.value = res.api_key
+      apiKeyDisplay.value = res.api_key
+      showKey.value = true
+    } catch (e) {
+      showToast('获取失败')
+      showKey.value = false
+    } finally {
+      revealing.value = false
+    }
+  } else {
+    // 已经有完整 Key，切换显隐
+    showKey.value = !showKey.value
+    apiKeyDisplay.value = showKey.value ? apiKeyFull.value : apiKeyFull.value
   }
 }
 
@@ -197,9 +206,8 @@ onMounted(async () => {
   try {
     const profile = await api.get('/user/profile')
     userInfo.value = profile
-    apiKey.value = profile.deepseek_api_key || ''
     preferredModel.value = profile.preferred_model || 'deepseek-v4-flash'
-    // 如果是管理员，查询 Hermes Agent 当前模型和 API Key
+    // 如果是管理员，查询 Hermes Agent 当前模型和脱敏 Key
     if (profile.role === 'admin') {
       try {
         const h = await api.get('/user/hermes-model')
@@ -207,7 +215,7 @@ onMounted(async () => {
       } catch (_) {}
       try {
         const k = await api.get('/user/hermes-api-key')
-        apiKey.value = k.api_key || ''
+        apiKeyDisplay.value = k.api_key || ''
       } catch (_) {}
     }
   } catch (e) {

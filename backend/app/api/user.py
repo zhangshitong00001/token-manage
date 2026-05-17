@@ -109,30 +109,45 @@ def get_hermes_model(
         return {"model": "error", "detail": str(e)}
 
 
+def _read_hermes_api_key() -> str:
+    """从 Hermes .env 读取 DEEPSEEK_API_KEY"""
+    env_path = os.path.expanduser("~/.hermes/.env")
+    if not os.path.exists(env_path):
+        return ""
+    with open(env_path) as f:
+        for line in f:
+            line = line.strip()
+            if line.startswith("DEEPSEEK_API_KEY="):
+                return line.split("=", 1)[1].strip().strip("\"'")
+    return ""
+
+
 @router.get("/hermes-api-key")
 def get_hermes_api_key(
     current_user: User = Depends(get_current_user),
 ):
-    """查询 Hermes Agent 当前使用的 DeepSeek API Key（仅管理员）"""
+    """查询 Hermes Agent 当前使用的 DeepSeek API Key（默认脱敏，仅管理员）"""
     if current_user.role != "admin":
         raise HTTPException(status_code=403, detail="仅管理员可查看")
 
-    # 从 Hermes .env 读取 API Key
-    env_path = os.path.expanduser("~/.hermes/.env")
-    try:
-        if not os.path.exists(env_path):
-            return {"api_key": "", "source": "not_found"}
+    key = _read_hermes_api_key()
+    masked = key
+    if key.startswith("sk-") and len(key) > 10:
+        masked = key[:5] + "..." + key[-4:]
 
-        with open(env_path) as f:
-            for line in f:
-                line = line.strip()
-                if line.startswith("DEEPSEEK_API_KEY="):
-                    key = line.split("=", 1)[1].strip().strip("\"'")
-                    # 脱敏显示：sk-xxxx...xxxx
-                    masked = key
-                    if key.startswith("sk-") and len(key) > 10:
-                        masked = key[:5] + "..." + key[-4:]
-                    return {"api_key": key, "masked": masked, "source": "hermes_env"}
-        return {"api_key": "", "source": "no_key_found"}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"读取 Key 失败: {str(e)}")
+    # 默认只返回脱敏版本，不返回完整 Key
+    return {"api_key": masked, "full_available": bool(key)}
+
+
+@router.post("/hermes-api-key/reveal")
+def reveal_hermes_api_key(
+    current_user: User = Depends(get_current_user),
+):
+    """获取完整 API Key（需管理员登录态确认，仅管理员）"""
+    if current_user.role != "admin":
+        raise HTTPException(status_code=403, detail="仅管理员可查看")
+
+    key = _read_hermes_api_key()
+    if not key:
+        raise HTTPException(status_code=404, detail="未找到 API Key")
+    return {"api_key": key}
