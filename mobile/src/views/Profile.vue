@@ -105,6 +105,16 @@
       </div>
     </div>
 
+    <!-- 文件上传（仅管理员） -->
+    <van-cell
+      v-if="userInfo.role === 'admin'"
+      title="📁 文件上传"
+      label="上传文件到服务器（最大 500MB）"
+      is-link
+      to="/upload"
+      style="margin:0 12px;border-radius:12px;overflow:hidden;"
+    />
+
     <!-- 退出登录 -->
     <van-button
       block

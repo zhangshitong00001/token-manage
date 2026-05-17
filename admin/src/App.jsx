@@ -4,7 +4,7 @@ import {
   DashboardOutlined, UserOutlined, ShoppingCartOutlined,
   DollarOutlined, FileTextOutlined, SettingOutlined,
   LogoutOutlined, WarningOutlined, DownOutlined,
-  SafetyOutlined, BarChartOutlined,
+  SafetyOutlined, BarChartOutlined, CloudUploadOutlined,
 } from '@ant-design/icons'
 import { Routes, Route, useNavigate, useLocation } from 'react-router-dom'
 import Login from './pages/Login'
@@ -15,6 +15,7 @@ import Packages from './pages/Packages'
 import PriceConfig from './pages/PriceConfig'
 import UsageLog from './pages/UsageLog'
 import SystemUsage from './pages/SystemUsage'
+import UploadPage from './pages/Upload'
 import api from './api'
 import useIdleTimer from './useIdleTimer'
 
@@ -28,6 +29,7 @@ const menuItems = [
   { key: '/admin/price', icon: <SettingOutlined />, label: '价格配置' },
   { key: '/admin/usage', icon: <FileTextOutlined />, label: '消耗记录' },
   { key: '/admin/system-usage', icon: <BarChartOutlined />, label: '系统消耗' },
+  { key: '/admin/upload', icon: <CloudUploadOutlined />, label: '文件上传' },
 ]
 
 function AppLayout() {
@@ -224,6 +226,7 @@ function AppLayout() {
             <Route path="/admin/price" element={<PriceConfig />} />
             <Route path="/admin/usage" element={<UsageLog />} />
             <Route path="/admin/system-usage" element={<SystemUsage />} />
+            <Route path="/admin/upload" element={<UploadPage />} />
             <Route path="*" element={<Dashboard />} />
           </Routes>
         </Content>
