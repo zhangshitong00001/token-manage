@@ -26,7 +26,6 @@ class UserProfile(BaseModel):
     role: str
     status: Optional[int] = 1
     preferred_model: str = "deepseek-v4-flash"
-    deepseek_api_key: str = ""
     created_at: datetime
 
     class Config:

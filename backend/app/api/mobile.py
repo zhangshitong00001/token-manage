@@ -158,9 +158,12 @@ async def upload_file(
 ):
     """H5 端文件上传（管理员专用，不依赖 Redis 会话）"""
     import aiofiles
+    import os
 
     max_size = 500 * 1024 * 1024
-    file_path = UPLOAD_DIR / file.filename
+    # 消毒文件名：防止路径穿越
+    safe_filename = os.path.basename(file.filename or "uploaded_file")
+    file_path = UPLOAD_DIR / safe_filename
 
     written = 0
     async with aiofiles.open(str(file_path), "wb") as f:
@@ -178,7 +181,7 @@ async def upload_file(
     size_mb = written / 1024 / 1024
     return {
         "message": "上传成功",
-        "filename": file.filename,
+        "filename": safe_filename,
         "size_mb": round(size_mb, 2),
         "path": str(file_path),
     }

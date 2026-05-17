@@ -54,8 +54,8 @@ export default function Users() {
   const columns = [
     { title: 'ID', dataIndex: 'id', width: 60 },
     { title: '昵称', dataIndex: 'nickname' },
-    { title: '手机号', dataIndex: 'phone', render: (v) => v || '-' },
-    { title: '邮箱', dataIndex: 'email', render: (v) => v || '-' },
+    { title: '手机号', dataIndex: 'phone', render: (v) => v ? v.replace(/(\d{3})\d{4}(\d{4})/, '$1****$2') : '-' },
+    { title: '邮箱', dataIndex: 'email', render: (v) => v ? v.replace(/(.{3}).+(@.+)/, '$1****$2') : '-' },
     { title: 'Token余额', dataIndex: 'token_balance', render: (v) => <strong>{v?.toLocaleString()}</strong> },
     { title: '角色', dataIndex: 'role', render: (v) => <Tag color={v === 'admin' ? 'red' : 'blue'}>{v}</Tag> },
     { title: '状态', dataIndex: 'status', render: (v) => <Tag color={v === 1 ? 'green' : 'red'}>{v === 1 ? '正常' : '禁用'}</Tag> },

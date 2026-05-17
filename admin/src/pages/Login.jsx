@@ -37,10 +37,6 @@ export default function Login({ onLogin }) {
         content: `验证码已发送到 ${email}`,
         duration: 3,
       })
-      // 开发/发送失败时返回调试码
-      if (res.debug_code) {
-        message.info(`调试验证码: ${res.debug_code}`, 10)
-      }
       startCountdown()
     } catch (e) {
       const detail = e.response?.data?.detail || '发送失败'
@@ -142,7 +138,7 @@ export default function Login({ onLogin }) {
           onFinish={onFinish}
           size="large"
           layout="vertical"
-          initialValues={{ email: 'zst_9609_4557@163.com' }}
+          initialValues={{ email: '' }}
         >
           <Form.Item
             name="email"
@@ -216,7 +212,7 @@ export default function Login({ onLogin }) {
         </Form>
 
         <Alert
-          message="验证码将发送至 zst_9609_4557@163.com 邮箱"
+          message="验证码将发送至您的管理员邮箱"
           type="info"
           showIcon
           style={{ borderRadius: 8, fontSize: 12, marginTop: 8 }}

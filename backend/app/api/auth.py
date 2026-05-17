@@ -21,6 +21,13 @@ ADMIN_EMAIL = settings.ADMIN_EMAIL
 @router.post("/register")
 def register(data: UserRegister, db: Session = Depends(get_db)):
     """注册（不自动返回Token，降低风险）"""
+    identifier = data.email or data.phone or "unknown"
+
+    # 频率限制：同一邮箱/手机每1小时最多注册3次
+    allowed, remaining = check_rate_limit(f"register:{identifier}", max_attempts=3, window_seconds=3600)
+    if not allowed:
+        raise HTTPException(status_code=429, detail="注册过于频繁，请1小时后再试")
+
     if not data.phone and not data.email:
         raise HTTPException(status_code=400, detail="手机号或邮箱至少填一个")
 
@@ -95,7 +102,8 @@ def send_code(email: str = Body(..., embed=True), db: Session = Depends(get_db))
         return {"message": f"验证码已发送到 {email}"}
     except Exception as e:
         print(f"[Email] 发送失败: {e}")
-        return {"message": "发送失败（开发模式）", "debug_code": code}
+        # 生产环境不暴露验证码，仅记录日志
+        return {"message": "发送失败，请稍后重试"}
 
 
 @router.post("/code-login", response_model=TokenResponse)
@@ -175,7 +183,8 @@ def admin_send_code(email: str = Body(..., embed=True)):
         return {"message": f"验证码已发送到 {email}"}
     except Exception as e:
         print(f"[Email] 发送失败: {e}")
-        return {"message": "发送失败（开发模式）", "debug_code": code}
+        # 生产环境不暴露验证码
+        return {"message": "发送失败，请稍后重试"}
 
 
 @router.post("/admin/login", response_model=TokenResponse)
