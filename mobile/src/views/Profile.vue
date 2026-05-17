@@ -21,7 +21,7 @@
       <van-field
         v-model="apiKey"
         label="DeepSeek Key"
-        placeholder="sk-xxxxxxxxxxxxxxxx"
+        placeholder="sk-xxx...xxxx"
         :type="showKey ? 'text' : 'password'"
         :right-icon="showKey ? 'eye-o' : 'closed-eye'"
         @click-right-icon="showKey = !showKey"
@@ -36,6 +36,35 @@
       >
         保存
       </van-button>
+    </div>
+
+    <!-- 模型偏好 -->
+    <div class="card" style="margin-top:12px;">
+      <van-cell title="偏好模型" />
+      <div style="display:flex;gap:12px;padding:8px 16px 16px;">
+        <van-button
+          round
+          :type="preferredModel === 'deepseek-v4-flash' ? 'primary' : 'default'"
+          :plain="preferredModel !== 'deepseek-v4-flash'"
+          size="small"
+          style="flex:1;"
+          @click="setModel('deepseek-v4-flash')"
+        >
+          ⚡ V4 Flash
+          <div style="font-size:10px;opacity:0.7;">快速 · 便宜</div>
+        </van-button>
+        <van-button
+          round
+          :type="preferredModel === 'deepseek-v4-pro' ? 'primary' : 'default'"
+          :plain="preferredModel !== 'deepseek-v4-pro'"
+          size="small"
+          style="flex:1;"
+          @click="setModel('deepseek-v4-pro')"
+        >
+          🧠 V4 Pro
+          <div style="font-size:10px;opacity:0.7;">更强 · 更准</div>
+        </van-button>
+      </div>
     </div>
 
     <!-- 退出登录 -->
@@ -63,6 +92,7 @@ const userInfo = ref({})
 const apiKey = ref('')
 const showKey = ref(false)
 const binding = ref(false)
+const preferredModel = ref('deepseek-v4-flash')
 
 function formatNumber(n) {
   if (n >= 100000000) return (n / 100000000).toFixed(1) + '亿'
@@ -90,6 +120,17 @@ async function bindKey() {
   }
 }
 
+async function setModel(model) {
+  try {
+    await api.put('/user/model-pref', { preferred_model: model })
+    preferredModel.value = model
+    showToast(`已切换到 ${model === 'deepseek-v4-flash' ? 'V4 Flash' : 'V4 Pro'}`)
+    logAction('switch_model', '/profile', `切换模型: ${model}`)
+  } catch (e) {
+    showToast('切换失败')
+  }
+}
+
 function onLogout() {
   logAction('logout', '/profile', `用户退出登录: ${userInfo.value.nickname}`)
   localStorage.removeItem('token')
@@ -103,6 +144,7 @@ onMounted(async () => {
     const profile = await api.get('/user/profile')
     userInfo.value = profile
     apiKey.value = profile.deepseek_api_key || ''
+    preferredModel.value = profile.preferred_model || 'deepseek-v4-flash'
   } catch (e) {
     console.error(e)
   }

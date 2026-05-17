@@ -25,6 +25,8 @@ class UserProfile(BaseModel):
     token_balance: int
     role: str
     status: Optional[int] = 1
+    preferred_model: str = "deepseek-v4-flash"
+    deepseek_api_key: str = ""
     created_at: datetime
 
     class Config:
@@ -33,6 +35,10 @@ class UserProfile(BaseModel):
 
 class UserBindKey(BaseModel):
     deepseek_api_key: str
+
+
+class UserModelPref(BaseModel):
+    preferred_model: str
 
 
 # ---- Token消耗 ----

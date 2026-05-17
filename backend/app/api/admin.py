@@ -6,6 +6,8 @@ from datetime import date, timedelta, datetime
 from typing import Optional
 
 from fastapi import HTTPException
+import requests
+from app.config import settings
 from app.database import get_db
 from app.models import User, TokenUsage
 from app.models.order import RechargeOrder
@@ -302,3 +304,31 @@ def sync_system_usage(
     db.add(record)
     db.commit()
     return {"message": f"{stats_date} 数据同步成功", "record": stats_date_str}
+
+
+@router.get("/deepseek/balance")
+def admin_deepseek_balance(admin: User = Depends(get_admin_user)):
+    """查询 DeepSeek 账户实时余额（管理后台使用）"""
+    api_key = settings.DEEPSEEK_API_KEY
+    if not api_key:
+        return {"available": False, "error": "未配置 DeepSeek API Key"}
+    try:
+        resp = requests.get(
+            "https://api.deepseek.com/user/balance",
+            headers={"Authorization": f"Bearer {api_key}", "Accept": "application/json"},
+            timeout=10,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        balances = data.get("balance_infos", [])
+        cny = next((b for b in balances if b.get("currency") == "CNY"), {})
+        usd = next((b for b in balances if b.get("currency") == "USD"), {})
+        return {
+            "available": data.get("is_available", False),
+            "cny_balance": float(cny.get("total_balance", 0)),
+            "cny_granted": float(cny.get("granted_balance", 0)),
+            "cny_topped_up": float(cny.get("topped_up_balance", 0)),
+            "usd_balance": float(usd.get("total_balance", 0)),
+        }
+    except Exception as e:
+        return {"available": False, "error": str(e)}

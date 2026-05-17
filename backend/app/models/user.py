@@ -12,6 +12,7 @@ class User(Base):
     password_hash = Column(String(255), nullable=False)
     nickname = Column(String(50), default="")
     deepseek_api_key = Column(String(255), default="")
+    preferred_model = Column(String(50), default="deepseek-v4-flash", comment="用户偏好的模型")
     token_balance = Column(BigInteger, default=0, comment="当前剩余Token额度（个）")
     role = Column(String(20), default="user", comment="user / admin")
     status = Column(SmallInteger, default=1, comment="0禁用 1正常")

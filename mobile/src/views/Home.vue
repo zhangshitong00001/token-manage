@@ -23,8 +23,19 @@
           </div>
         </div>
       </div>
-      <div style="padding:0 16px 12px;font-size:11px;color:#bbb;">
-        数据来源: DeepSeek 官方 · 实时
+      <!-- 当前模型 -->
+      <div style="padding:0 16px 12px;display:flex;justify-content:space-between;align-items:center;">
+        <div style="font-size:11px;color:#bbb;">
+          数据来源: DeepSeek 官方 · 实时
+        </div>
+        <van-tag
+          :type="preferredModel === 'deepseek-v4-pro' ? 'warning' : 'primary'"
+          size="medium"
+          @click="$router.push('/profile')"
+          style="cursor:pointer;"
+        >
+          {{ preferredModel === 'deepseek-v4-pro' ? '🧠 V4 Pro' : '⚡ V4 Flash' }}
+        </van-tag>
       </div>
     </div>
 
@@ -86,6 +97,7 @@ import api from '../utils/api.js'
 const userInfo = ref({})
 const todayUsage = ref({})
 const dsBalance = ref({ available: null, cny_balance: 0, cny_granted: 0, cny_topped_up: 0 })
+const preferredModel = ref('deepseek-v4-flash')
 const trend = ref([])
 const trendMax = ref(0)
 const orders = ref([])
@@ -121,6 +133,7 @@ async function loadData() {
     ])
     userInfo.value = profile
     dsBalance.value = balance
+    preferredModel.value = profile.preferred_model || 'deepseek-v4-flash'
 
     // 今日消耗用最近一天的数据
     const items = sysDaily.items || []

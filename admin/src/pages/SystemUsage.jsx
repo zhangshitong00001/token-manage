@@ -7,6 +7,7 @@ import dayjs from 'dayjs'
 export default function SystemUsage() {
   const [dailyData, setDailyData] = useState([])
   const [summary, setSummary] = useState(null)
+  const [dsBalance, setDsBalance] = useState(null)
   const [loading, setLoading] = useState(true)
   const [days, setDays] = useState(30)
 
@@ -15,9 +16,11 @@ export default function SystemUsage() {
     Promise.all([
       api.get('/admin/system-usage/daily', { params: { days: d } }),
       api.get('/admin/system-usage/summary', { params: { days: d } }),
-    ]).then(([daily, sum]) => {
+      api.get('/admin/deepseek/balance'),
+    ]).then(([daily, sum, balance]) => {
       setDailyData(daily.items || [])
       setSummary(sum)
+      setDsBalance(balance)
     }).catch(console.error).finally(() => setLoading(false))
   }
 
@@ -111,7 +114,7 @@ export default function SystemUsage() {
             <Col span={6}>
               <Card hoverable styles={{ body: { padding: '16px 20px' } }}>
                 <Statistic
-                  title={`近${summary?.period_days || days}天总Token`}
+                  title="近7天总Token"
                   value={(summary?.total_tokens || 0) / 10000}
                   suffix="万"
                   precision={1}
@@ -146,11 +149,12 @@ export default function SystemUsage() {
             <Col span={6}>
               <Card hoverable styles={{ body: { padding: '16px 20px' } }}>
                 <Statistic
-                  title="总缓存读取"
-                  value={(summary?.total_cache_read_tokens || 0) / 10000}
-                  suffix="万"
-                  precision={1}
-                  valueStyle={{ color: '#13c2c2' }}
+                  title="DeepSeek 余额"
+                  value={dsBalance?.cny_balance || 0}
+                  precision={2}
+                  prefix="¥"
+                  valueStyle={{ color: '#1677ff' }}
+                  suffix={<span style={{ fontSize: 12 }}>{dsBalance?.cny_granted > 0 ? `(含赠送 ¥${dsBalance.cny_granted})` : ''}</span>}
                 />
               </Card>
             </Col>
