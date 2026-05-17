@@ -142,6 +142,11 @@ def code_login(
         raise HTTPException(status_code=403, detail="账号已被禁用")
 
     token = create_access_token({"sub": str(user.id), "role": user.role}, remember_me=remember_me)
+
+    # 如果是管理员，同时创建 Redis 会话（以便 admin 端接口识别）
+    if user.role == "admin":
+        set_admin_session(user.id, token)
+
     return TokenResponse(access_token=token, user=UserProfile.model_validate(user))
 
 
