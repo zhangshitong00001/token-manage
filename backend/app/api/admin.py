@@ -19,7 +19,7 @@ from app.schemas import (
     AdminUserUpdate, PriceConfigOut, PriceConfigUpdate,
     AdminStats, PackageOut, PackageUpdate, UserProfile,
 )
-from app.core.deps import get_admin_user, get_admin_user_simple
+from app.core.deps import get_admin_user
 router = APIRouter(prefix="/api/admin", tags=["管理后台"])
 
 
@@ -343,7 +343,7 @@ UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 @router.post("/upload")
 async def upload_file(
     file: UploadFile = File(...),
-    admin: User = Depends(get_admin_user_simple),
+    admin: User = Depends(get_admin_user),
 ):
     """上传文件到服务器（管理员专用，最大500MB）"""
     import aiofiles

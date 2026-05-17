@@ -1,12 +1,13 @@
 """API路由 - 手机端消耗查询"""
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, UploadFile, File, HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from datetime import date, timedelta
+from pathlib import Path
 
 from app.database import get_db
 from app.models import User, TokenUsage, SystemDailyUsage
-from app.core.deps import get_current_user
+from app.core.deps import get_current_user, get_admin_user_simple
 from app.config import settings
 
 router = APIRouter(prefix="/api/mobile", tags=["手机端"])
@@ -141,4 +142,43 @@ def get_system_usage_summary(
         "total_tokens": total_input + total_output,
         "total_cost_usd": round(total_cost, 4),
         "avg_daily_tokens": int((total_input + total_output) / max(len(records), 1)),
+    }
+
+
+# ---- H5 文件上传（跳过 Redis 会话检查，30天内有效）----
+
+UPLOAD_DIR = Path("/root/uploads")
+UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+
+
+@router.post("/upload")
+async def upload_file(
+    file: UploadFile = File(...),
+    admin: User = Depends(get_admin_user_simple),
+):
+    """H5 端文件上传（管理员专用，不依赖 Redis 会话）"""
+    import aiofiles
+
+    max_size = 500 * 1024 * 1024
+    file_path = UPLOAD_DIR / file.filename
+
+    written = 0
+    async with aiofiles.open(str(file_path), "wb") as f:
+        while True:
+            chunk = await file.read(8 * 1024 * 1024)
+            if not chunk:
+                break
+            written += len(chunk)
+            if written > max_size:
+                await f.close()
+                file_path.unlink(missing_ok=True)
+                raise HTTPException(status_code=413, detail="文件超过500MB上限")
+            await f.write(chunk)
+
+    size_mb = written / 1024 / 1024
+    return {
+        "message": "上传成功",
+        "filename": file.filename,
+        "size_mb": round(size_mb, 2),
+        "path": str(file_path),
     }

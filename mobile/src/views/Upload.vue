@@ -107,7 +107,7 @@ function startUpload() {
   const token = localStorage.getItem('token') || ''
 
   const xhr = new XMLHttpRequest()
-  xhr.open('POST', '/api/admin/upload')
+  xhr.open('POST', '/api/mobile/upload')
   xhr.setRequestHeader('Authorization', `Bearer ${token}`)
 
   xhr.upload.onprogress = (e) => {
