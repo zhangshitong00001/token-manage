@@ -40,7 +40,7 @@
 
     <!-- 模型偏好 -->
     <div class="card" style="margin-top:12px;">
-      <van-cell title="偏好模型" />
+      <van-cell title="偏好模型（平台用户）" />
       <div style="display:flex;gap:12px;padding:8px 16px 16px;">
         <van-button
           round
@@ -63,6 +63,45 @@
         >
           🧠 V4 Pro
           <div style="font-size:10px;opacity:0.7;">更强 · 更准</div>
+        </van-button>
+      </div>
+    </div>
+
+    <!-- Hermes Agent 模型切换（仅管理员可见） -->
+    <div class="card" style="margin-top:12px;border:1px solid #ffd666;" v-if="userInfo.role === 'admin'">
+      <van-cell
+        title="🤖 Hermes Agent 模型"
+        :label="'当前: ' + (hermesModel === 'deepseek-v4-pro' ? 'V4 Pro' : 'V4 Flash')"
+        value-style="font-weight:600;"
+      >
+        <template #value>
+          <van-tag :type="hermesModel === 'deepseek-v4-pro' ? 'warning' : 'primary'">
+            {{ hermesModel === 'deepseek-v4-pro' ? 'Pro' : 'Flash' }}
+          </van-tag>
+        </template>
+      </van-cell>
+      <div style="display:flex;gap:12px;padding:8px 16px 16px;">
+        <van-button
+          round
+          :type="hermesModel === 'deepseek-v4-flash' ? 'primary' : 'default'"
+          :plain="hermesModel !== 'deepseek-v4-flash'"
+          size="small"
+          style="flex:1;"
+          :loading="switchingHermes"
+          @click="switchHermes('deepseek-v4-flash')"
+        >
+          ⚡ 切换到 Flash
+        </van-button>
+        <van-button
+          round
+          :type="hermesModel === 'deepseek-v4-pro' ? 'warning' : 'default'"
+          :plain="hermesModel !== 'deepseek-v4-pro'"
+          size="small"
+          style="flex:1;"
+          :loading="switchingHermes"
+          @click="switchHermes('deepseek-v4-pro')"
+        >
+          🧠 切换到 Pro
         </van-button>
       </div>
     </div>
@@ -93,6 +132,8 @@ const apiKey = ref('')
 const showKey = ref(false)
 const binding = ref(false)
 const preferredModel = ref('deepseek-v4-flash')
+const hermesModel = ref('deepseek-v4-flash')
+const switchingHermes = ref(false)
 
 function formatNumber(n) {
   if (n >= 100000000) return (n / 100000000).toFixed(1) + '亿'
@@ -131,6 +172,20 @@ async function setModel(model) {
   }
 }
 
+async function switchHermes(model) {
+  switchingHermes.value = true
+  try {
+    const res = await api.post('/user/hermes-model', { preferred_model: model })
+    hermesModel.value = res.model
+    showToast(`✅ Hermes 已切换到 ${model === 'deepseek-v4-pro' ? 'V4 Pro' : 'V4 Flash'}`)
+    logAction('switch_hermes', '/profile', `切换Hermes模型: ${model}`)
+  } catch (e) {
+    showToast(e.response?.data?.detail || '切换失败')
+  } finally {
+    switchingHermes.value = false
+  }
+}
+
 function onLogout() {
   logAction('logout', '/profile', `用户退出登录: ${userInfo.value.nickname}`)
   localStorage.removeItem('token')
@@ -145,6 +200,13 @@ onMounted(async () => {
     userInfo.value = profile
     apiKey.value = profile.deepseek_api_key || ''
     preferredModel.value = profile.preferred_model || 'deepseek-v4-flash'
+    // 如果是管理员，查询 Hermes Agent 当前模型
+    if (profile.role === 'admin') {
+      try {
+        const h = await api.get('/user/hermes-model')
+        hermesModel.value = h.model || 'deepseek-v4-flash'
+      } catch (_) {}
+    }
   } catch (e) {
     console.error(e)
   }
