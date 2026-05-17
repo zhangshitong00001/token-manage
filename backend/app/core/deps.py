@@ -47,3 +47,10 @@ def get_admin_user(current_user: User = Depends(get_current_user)) -> User:
     refresh_admin_session(current_user.id)
 
     return current_user
+
+
+def get_admin_user_simple(current_user: User = Depends(get_current_user)) -> User:
+    """验证管理员权限（不检查 Redis 会话，适合 H5 端调用的管理接口）"""
+    if current_user.role != "admin":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="需要管理员权限")
+    return current_user
