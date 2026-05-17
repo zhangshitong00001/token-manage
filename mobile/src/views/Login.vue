@@ -94,7 +94,7 @@ async function onSendCode() {
 async function onLogin() {
   loading.value = true
   try {
-    const res = await api.post('/auth/code-login', { email: email.value, code: code.value })
+    const res = await api.post('/auth/code-login', { email: email.value, code: code.value, remember_me: true })
     localStorage.setItem('token', res.access_token)
     localStorage.setItem('user', JSON.stringify(res.user))
     logAction('login', '/login', `用户登录成功: ${email.value}`)

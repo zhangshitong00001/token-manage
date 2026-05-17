@@ -102,9 +102,13 @@ def send_code(email: str = Body(..., embed=True), db: Session = Depends(get_db))
 def code_login(
     email: str = Body(...),
     code: str = Body(...),
+    remember_me: bool = Body(default=True),
     db: Session = Depends(get_db),
 ):
-    """邮箱验证码登录（验证码有效期内可登录）"""
+    """邮箱验证码登录（验证码有效期内可登录）
+    - remember_me=true: token 30天有效（适用于自己的手机）
+    - remember_me=false: token 1天有效（默认安全）
+    """
     # 频率限制：同一邮箱每5分钟最多尝试10次
     allowed, remaining = check_login_attempt(f"code_login:{email}")
     if not allowed:
@@ -137,7 +141,7 @@ def code_login(
     if user.status == 0:
         raise HTTPException(status_code=403, detail="账号已被禁用")
 
-    token = create_access_token({"sub": str(user.id), "role": user.role})
+    token = create_access_token({"sub": str(user.id), "role": user.role}, remember_me=remember_me)
     return TokenResponse(access_token=token, user=UserProfile.model_validate(user))
 
 
