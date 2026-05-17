@@ -17,16 +17,34 @@ import sys
 import json
 import argparse
 from datetime import date, datetime
+from pathlib import Path
 
 import requests
 
-# ── 数据库配置（从环境变量读取，不留明文）──
+# ── 数据库配置（从环境变量读取，优先.env）──
+_ENV_FILE = Path(__file__).resolve().parent.parent / ".env"
+if _ENV_FILE.exists():
+    for _line in _ENV_FILE.read_text().splitlines():
+        _line = _line.strip()
+        if _line and not _line.startswith("#") and "=" in _line:
+            _k, _v = _line.split("=", 1)
+            # 从 DATABASE_URL 解析密码
+            if _k == "DATABASE_URL" and _v.startswith("postgresql"):
+                import re
+                _m = re.search(r"://([^:]+):([^@]+)@", _v)
+                if _m:
+                    _DB_USER = os.environ.get("DB_USER") or _m.group(1)
+                    _DB_PASS = os.environ.get("DB_PASSWORD") or _m.group(2)
+                    _DB_HOST = os.environ.get("DB_HOST") or "127.0.0.1"
+                    _DB_PORT = int(os.environ.get("DB_PORT") or "5432")
+                    _DB_NAME = os.environ.get("DB_NAME") or "tokenmanager"
+
 DB_CONFIG = {
-    "host": os.environ.get("DB_HOST", "127.0.0.1"),
-    "port": int(os.environ.get("DB_PORT", "5432")),
-    "dbname": os.environ.get("DB_NAME", "tokenmanager"),
-    "user": os.environ.get("DB_USER", "zhangshitong"),
-    "password": os.environ.get("DB_PASSWORD", ""),
+    "host": locals().get("_DB_HOST", os.environ.get("DB_HOST", "127.0.0.1")),
+    "port": locals().get("_DB_PORT", int(os.environ.get("DB_PORT", "5432"))),
+    "dbname": locals().get("_DB_NAME", os.environ.get("DB_NAME", "tokenmanager")),
+    "user": locals().get("_DB_USER", os.environ.get("DB_USER", "zhangshitong")),
+    "password": locals().get("_DB_PASS", os.environ.get("DB_PASSWORD", "")),
 }
 
 DEEPSEEK_BASE = "https://platform.deepseek.com/api/v0/usage"
