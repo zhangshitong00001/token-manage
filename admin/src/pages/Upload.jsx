@@ -36,6 +36,7 @@ export default function UploadPage() {
 
     try {
       const res = await api.post('/admin/upload', formData, {
+        timeout: 600000, // 500MB 上传最多 10 分钟
         headers: { 'Content-Type': 'multipart/form-data' },
         onUploadProgress: (e) => {
           if (e.total) {
