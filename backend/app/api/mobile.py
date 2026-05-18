@@ -88,6 +88,52 @@ def get_deepseek_balance(
         return {"available": False, "error": str(e)}
 
 
+# ---- DeepSeek 扫码支付 ----
+from app.core.deepseek_payment import deepseek_payment as _ds_pay
+
+
+@router.post("/deepseek/payment/create")
+def create_deepseek_payment(
+    data: dict,
+    current_user: User = Depends(get_current_user),
+):
+    """创建 DeepSeek 充值二维码"""
+    try:
+        result = _ds_pay.create_qr_payment(data.get("amount"))
+        return {"success": True, "data": result}
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"创建支付失败: {str(e)}")
+
+
+@router.post("/deepseek/payment/capture")
+def capture_deepseek_payment(
+    data: dict,
+    current_user: User = Depends(get_current_user),
+):
+    """确认支付完成（用户扫码付款后调用）"""
+    payment_id = data.get("payment_id")
+    if not payment_id:
+        raise HTTPException(status_code=400, detail="缺少 payment_id")
+    try:
+        result = _ds_pay.capture_payment(payment_id)
+        return {"success": True, "data": result}
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"确认支付失败: {str(e)}")
+
+
+@router.get("/deepseek/payment/status")
+def query_deepseek_payment(
+    payment_id: str,
+    current_user: User = Depends(get_current_user),
+):
+    """查询支付状态"""
+    try:
+        result = _ds_pay.query_payment(payment_id)
+        return {"success": True, "data": result}
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"查询支付失败: {str(e)}")
+
+
 # ---- 系统级消耗（与后台管理后台SystemUsage保持一致）----
 
 @router.get("/system/usage/daily")

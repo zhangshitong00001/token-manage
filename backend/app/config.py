@@ -42,6 +42,8 @@ class Settings(BaseSettings):
 
     # DeepSeek
     DEEPSEEK_API_KEY: str = ""
+    DEEPSEEK_EMAIL: str = ""
+    DEEPSEEK_PASSWORD: str = ""
 
     class Config:
         env_file = ".env"
