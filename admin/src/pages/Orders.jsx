@@ -42,8 +42,8 @@ export default function Orders() {
     { title: 'Token', dataIndex: 'token_granted', render: (v) => v?.toLocaleString() },
     { title: '支付方式', dataIndex: 'pay_method', render: (v) => v === 'wechat' ? '微信' : '支付宝' },
     { title: '状态', dataIndex: 'pay_status', render: (v) => <Tag color={statusMap[v]?.color}>{statusMap[v]?.text}</Tag> },
-    { title: '支付时间', dataIndex: 'pay_time', render: (v) => v ? dayjs(v).format('MM-DD HH:mm') : '-' },
-    { title: '创建时间', dataIndex: 'create_time', render: (v) => dayjs(v).format('MM-DD HH:mm') },
+    { title: '支付时间', dataIndex: 'pay_time', render: (v) => v ? dayjs(v).format('YYYY-MM-DD HH:mm:ss') : '-' },
+    { title: '创建时间', dataIndex: 'create_time', render: (v) => dayjs(v).format('YYYY-MM-DD HH:mm:ss') },
     {
       title: '操作', render: (_, r) =>
         r.pay_status === 0 ? (

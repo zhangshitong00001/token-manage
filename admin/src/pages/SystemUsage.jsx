@@ -233,7 +233,7 @@ export default function SystemUsage() {
                       }}
                       title={`${r.stats_date}: ${(r.total_tokens / 10000).toFixed(1)}万 token`}
                     />
-                    <span style={{ fontSize: 10, color: '#999' }}>{r.stats_date.slice(5)}</span>
+                    <span style={{ fontSize: 10, color: '#999' }}>{r.stats_date}</span>
                   </div>
                 )
               })}
@@ -352,9 +352,15 @@ export default function SystemUsage() {
           <Table
             dataSource={realtime.recent_sessions}
             columns={[
-              { title: '时间', dataIndex: 'started_at', width: 100, render: (v) => {
+              { title: '时间', dataIndex: 'started_at', width: 160, render: (v) => {
                 const t = new Date(v * 1000)
-                return <span style={{ fontSize: 12 }}>{`${String(t.getHours()).padStart(2,'0')}:${String(t.getMinutes()).padStart(2,'0')}`}</span>
+                const Y = t.getFullYear()
+                const M = String(t.getMonth()+1).padStart(2,'0')
+                const D = String(t.getDate()).padStart(2,'0')
+                const h = String(t.getHours()).padStart(2,'0')
+                const m = String(t.getMinutes()).padStart(2,'0')
+                const s = String(t.getSeconds()).padStart(2,'0')
+                return <span style={{ fontSize: 12 }}>{`${Y}-${M}-${D} ${h}:${m}:${s}`}</span>
               }},
               { title: '来源', dataIndex: 'source', width: 70, render: (v) => <Tag style={{ fontSize: 10, lineHeight: '16px' }}>{v}</Tag> },
               { title: '模型', dataIndex: 'model', width: 120, render: (v) => <span style={{ fontSize: 12, color: '#666' }}>{v}</span> },

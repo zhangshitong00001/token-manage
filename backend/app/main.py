@@ -14,6 +14,7 @@ from app.models.price_config import PriceConfig
 from app.models.token_usage import TokenUsage
 from app.models.order import RechargeOrder
 from app.models.system_daily_usage import SystemDailyUsage
+from app.models.deepseek_invoice import DeepSeekInvoice
 from app.core.security import hash_password
 
 # 创建数据库表

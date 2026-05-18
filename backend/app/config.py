@@ -44,6 +44,8 @@ class Settings(BaseSettings):
     DEEPSEEK_API_KEY: str = ""
     DEEPSEEK_EMAIL: str = ""
     DEEPSEEK_PASSWORD: str = ""
+    DEEPSEEK_USER_TOKEN: str = ""  # 持久化的 DeepSeek 平台用户 Token（来自浏览器）
+    DEEPSEEK_CF_CLEARANCE: str = ""  # 匹配 Token 的 cf_clearance cookie
 
     class Config:
         env_file = ".env"

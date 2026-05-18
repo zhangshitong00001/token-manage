@@ -5,6 +5,7 @@ import {
   DollarOutlined, FileTextOutlined, SettingOutlined,
   LogoutOutlined, WarningOutlined, DownOutlined,
   SafetyOutlined, BarChartOutlined, CloudUploadOutlined,
+  KeyOutlined,
 } from '@ant-design/icons'
 import { Routes, Route, useNavigate, useLocation } from 'react-router-dom'
 import Login from './pages/Login'
@@ -16,6 +17,7 @@ import PriceConfig from './pages/PriceConfig'
 import UsageLog from './pages/UsageLog'
 import SystemUsage from './pages/SystemUsage'
 import UploadPage from './pages/Upload'
+import DeepSeek from './pages/DeepSeek'
 import api from './api'
 import useIdleTimer from './useIdleTimer'
 
@@ -30,6 +32,7 @@ const menuItems = [
   { key: '/admin/usage', icon: <FileTextOutlined />, label: '消耗记录' },
   { key: '/admin/system-usage', icon: <BarChartOutlined />, label: '系统消耗' },
   { key: '/admin/upload', icon: <CloudUploadOutlined />, label: '文件上传' },
+  { key: '/admin/deepseek', icon: <KeyOutlined />, label: 'DeepSeek 管理' },
 ]
 
 function AppLayout() {
@@ -42,23 +45,19 @@ function AppLayout() {
   const userStr = localStorage.getItem('admin_user')
   const user = userStr ? JSON.parse(userStr) : null
 
-  // 弹窗：登录过期
   const showExpiredModal = useCallback(() => {
     if (modalShownRef.current) return
     modalShownRef.current = true
     setSessionExpired(true)
   }, [])
 
-  // 关闭弹窗 + 重设计时
   const dismissModal = useCallback(() => {
     modalShownRef.current = false
     setSessionExpired(false)
   }, [])
 
-  // ---- 空闲检测：10分钟无操作弹过期窗 ----
   const resetActivity = useIdleTimer(showExpiredModal, !!token)
 
-  // ---- 心跳：每5分钟 ping 后台 ----
   useEffect(() => {
     if (!token) return
     const heartbeat = async () => {
@@ -69,14 +68,12 @@ function AppLayout() {
     return () => clearInterval(interval)
   }, [token])
 
-  // ---- 路由切换 → 重置空闲计时 + 刷新后台 ----
   useEffect(() => {
     if (!token) return
     api.get('/admin/ping').catch(() => {})
     resetActivity()
   }, [location.pathname, token])
 
-  // ---- 监听 session-expired 事件（api.jsx 401 拦截触发）----
   useEffect(() => {
     if (!token) return
     const handler = () => showExpiredModal()
@@ -84,7 +81,6 @@ function AppLayout() {
     return () => window.removeEventListener('session-expired', handler)
   }, [token, showExpiredModal])
 
-  // ---- 弹出过期弹窗 ----
   useEffect(() => {
     if (!sessionExpired) return
     Modal.confirm({
@@ -94,9 +90,7 @@ function AppLayout() {
       okText: '重新登录',
       cancelText: '再试一下',
       okButtonProps: { type: 'primary' },
-      onOk: () => {
-        window.location.reload()
-      },
+      onOk: () => { window.location.reload() },
       onCancel: () => {
         dismissModal()
         resetActivity()
@@ -109,7 +103,6 @@ function AppLayout() {
     return <Login onLogin={() => window.location.reload()} />
   }
 
-  // 导航点击 → 重置空闲计时
   const handleMenuClick = ({ key }) => {
     resetActivity()
     api.get('/admin/ping').catch(() => {})
@@ -132,7 +125,6 @@ function AppLayout() {
     })
   }
 
-  // 用户下拉菜单
   const userMenuItems = [
     {
       key: 'profile',
@@ -191,12 +183,8 @@ function AppLayout() {
             <Dropdown menu={{ items: userMenuItems }} placement="bottomRight" trigger={['click']}>
               <div
                 style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 8,
-                  cursor: 'pointer',
-                  padding: '4px 12px',
-                  borderRadius: 8,
+                  display: 'flex', alignItems: 'center', gap: 8,
+                  cursor: 'pointer', padding: '4px 12px', borderRadius: 8,
                   transition: 'background 0.2s',
                 }}
                 onMouseEnter={(e) => e.currentTarget.style.background = '#f5f5f5'}
@@ -205,9 +193,7 @@ function AppLayout() {
                 <Avatar
                   size={32}
                   icon={<UserOutlined />}
-                  style={{
-                    background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-                  }}
+                  style={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' }}
                 />
                 <span style={{ color: '#333', fontWeight: 500 }}>
                   {user?.nickname || '管理员'}
@@ -227,6 +213,7 @@ function AppLayout() {
             <Route path="/admin/usage" element={<UsageLog />} />
             <Route path="/admin/system-usage" element={<SystemUsage />} />
             <Route path="/admin/upload" element={<UploadPage />} />
+            <Route path="/admin/deepseek" element={<DeepSeek />} />
             <Route path="*" element={<Dashboard />} />
           </Routes>
         </Content>

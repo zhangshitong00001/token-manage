@@ -42,7 +42,7 @@
       </div>
       <div v-for="(item, i) in items" :key="i"
         style="display:flex;align-items:center;padding:10px 16px;border-bottom:1px solid #f5f5f5;">
-        <div style="width:80px;font-weight:600;font-size:14px;">{{ item.stats_date.slice(5) }}</div>
+        <div style="width:80px;font-weight:600;font-size:14px;">{{ item.stats_date }}</div>
         <div style="flex:1;">
           <div style="display:flex;align-items:center;gap:4px;margin-bottom:2px;">
             <div style="height:8px;flex:1;background:#f0f0f0;border-radius:4px;overflow:hidden;">

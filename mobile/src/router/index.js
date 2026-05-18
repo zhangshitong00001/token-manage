@@ -33,10 +33,10 @@ const routes = [
     meta: { title: '个人中心' },
   },
   {
-    path: '/upload',
-    name: 'Upload',
-    component: () => import('../views/Upload.vue'),
-    meta: { title: '文件上传' },
+    path: '/bills',
+    name: 'Bills',
+    component: () => import('../views/Bills.vue'),
+    meta: { title: 'DeepSeek 账单' },
   },
 ]
 

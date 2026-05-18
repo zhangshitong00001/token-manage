@@ -64,36 +64,132 @@
             </div>
           </div>
 
-          <!-- 支付方式选择 -->
-          <van-cell title="支付方式" style="font-weight:600;border-radius:12px 12px 0 0;" />
-          <van-radio-group v-model="dsPayMethod" style="background:#fff;border-radius:0 0 12px 12px;margin-bottom:12px;">
-            <van-cell-group :border="false">
-              <van-cell clickable @click="dsPayMethod = 'WECHAT'">
-                <template #title><van-icon name="wechat" color="#07c160" style="margin-right:8px;" />微信支付</template>
-                <template #value><van-radio name="WECHAT" /></template>
-              </van-cell>
-              <van-cell clickable @click="dsPayMethod = 'ALIPAY'">
-                <template #title><van-icon name="alipay" color="#1677ff" style="margin-right:8px;" />支付宝</template>
-                <template #value><van-radio name="ALIPAY" /></template>
-              </van-cell>
-            </van-cell-group>
-          </van-radio-group>
+          <!-- 充值金额 -->
+          <div style="background:#fff;border-radius:12px;padding:16px;margin-bottom:12px;">
+            <div style="font-weight:600;margin-bottom:12px;">充值金额</div>
+            <div style="display:flex;align-items:center;background:#f5f5f5;border-radius:8px;padding:8px 12px;">
+              <span style="font-size:20px;font-weight:700;color:#667eea;">¥</span>
+              <input
+                v-model="dsAmount"
+                type="number"
+                min="1"
+                step="1"
+                placeholder="输入充值金额"
+                style="flex:1;border:none;background:transparent;font-size:24px;font-weight:700;outline:none;padding:4px 8px;"
+              />
+            </div>
+            <div style="display:flex;gap:8px;margin-top:8px;">
+              <div
+                v-for="amt in quickAmounts" :key="amt"
+                :style="{
+                  flex:1, padding:'8px 0', textAlign:'center', borderRadius:8, fontSize:14, fontWeight:600, cursor:'pointer',
+                  border: dsAmount == amt ? '2px solid #667eea' : '2px solid #eee',
+                  color: dsAmount == amt ? '#667eea' : '#666',
+                  background: dsAmount == amt ? '#f0eeff' : '#fafafa',
+                }"
+                @click="dsAmount = amt"
+              >¥{{ amt }}</div>
+            </div>
+          </div>
 
-          <!-- 充值金额选择 -->
-          <van-cell title="选择充值金额" style="font-weight:600;border-radius:12px 12px 0 0;" />
-          <van-radio-group v-model="dsAmount" style="background:#fff;border-radius:0 0 12px 12px;margin-bottom:12px;">
-            <van-cell-group :border="false">
-              <van-cell v-for="amt in [10, 20, 50, 100, 200]" :key="amt" clickable @click="dsAmount = amt">
-                <template #title><span style="font-weight:500;">¥{{ amt }}</span></template>
-                <template #value><van-radio :name="amt" /></template>
-              </van-cell>
-            </van-cell-group>
-          </van-radio-group>
+          <!-- 支付方式 -->
+          <div style="background:#fff;border-radius:12px;padding:16px;margin-bottom:12px;">
+            <div style="font-weight:600;margin-bottom:12px;">支付方式</div>
+            <div
+              :style="{
+                display:'flex', alignItems:'center', justifyContent:'space-between', padding:'12px 16px',
+                borderRadius:8, cursor:'pointer', marginBottom:8,
+                border: dsPayMethod === 'WECHAT' ? '2px solid #07c160' : '2px solid #eee',
+                background: dsPayMethod === 'WECHAT' ? '#f0fff4' : '#fafafa',
+              }"
+              @click="dsPayMethod = 'WECHAT'"
+            >
+              <div style="display:flex;align-items:center;gap:8px;">
+                <span style="font-size:24px;">💚</span>
+                <span style="font-weight:500;">微信支付</span>
+              </div>
+              <div :style="{width:18,height:18,borderRadius:'50%',border:'2px solid',borderColor:dsPayMethod==='WECHAT'?'#07c160':'#ddd',display:'flex',alignItems:'center',justifyContent:'center'}">
+                <div v-if="dsPayMethod === 'WECHAT'" style="width:10px;height:10px;borderRadius:'50%';background:'#07c160'"></div>
+              </div>
+            </div>
+            <div
+              :style="{
+                display:'flex', alignItems:'center', justifyContent:'space-between', padding:'12px 16px',
+                borderRadius:8, cursor:'pointer',
+                border: dsPayMethod === 'ALIPAY' ? '2px solid #1989fa' : '2px solid #eee',
+                background: dsPayMethod === 'ALIPAY' ? '#f0f8ff' : '#fafafa',
+              }"
+              @click="dsPayMethod = 'ALIPAY'"
+            >
+              <div style="display:flex;align-items:center;gap:8px;">
+                <span style="font-size:24px;">🔵</span>
+                <span style="font-weight:500;">支付宝</span>
+              </div>
+              <div :style="{width:18,height:18,borderRadius:'50%',border:'2px solid',borderColor:dsPayMethod==='ALIPAY'?'#1989fa':'#ddd',display:'flex',alignItems:'center',justifyContent:'center'}">
+                <div v-if="dsPayMethod === 'ALIPAY'" style="width:10px;height:10px;borderRadius:'50%';background:'#1989fa'"></div>
+              </div>
+            </div>
+          </div>
 
-          <van-button type="primary" block round size="large" :disabled="!dsAmount" :loading="dsSubmitting" @click="onDsRecharge">
-            充 值 ¥{{ dsAmount }}
+          <!-- 立即充值按钮 -->
+          <van-button
+            type="primary" block round size="large"
+            :loading="dsSubmitting"
+            :disabled="!dsAmount || dsAmount < 1"
+            @click="onDsRecharge"
+            style="background:linear-gradient(135deg,#667eea,#764ba2);border:none;"
+          >
+            {{ dsSubmitting ? '创建中...' : `扫码支付 ¥${dsAmount || '--'}` }}
           </van-button>
+
+          <!-- 同步按钮 -->
+          <van-button
+            block round size="small"
+            :loading="syncing"
+            @click="onSyncInvoices"
+            style="margin-top:12px;border:1px solid #667eea;color:#667eea;background:transparent;"
+          >
+            {{ syncing ? '同步中...' : '🔄 同步账单并刷新余额' }}
+          </van-button>
+          <div v-if="syncMsg" style="text-align:center;font-size:12px;color:#999;margin-top:6px;">{{ syncMsg }}</div>
+
+          <div style="text-align:center;margin-top:12px;">
+            <router-link to="/bills" style="color:#667eea;font-size:13px;text-decoration:none;">📋 查看充值账单</router-link>
+          </div>
         </div>
+
+        <!-- 二维码弹窗 -->
+        <van-overlay :show="showQrModal" @click="showQrModal = false">
+          <div style="position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:#fff;border-radius:16px;padding:24px;width:300px;text-align:center;">
+            <div style="font-size:16px;font-weight:600;margin-bottom:8px;">
+              {{ dsPayMethod === 'WECHAT' ? '💚 微信扫码支付' : '🔵 支付宝扫码支付' }}
+            </div>
+            <div style="color:#999;font-size:13px;margin-bottom:16px;">¥{{ dsAmount }}</div>
+            <img v-if="qrImage" :src="qrImage" style="width:240px;height:240px;border-radius:8px;" />
+            <van-loading v-else size="40" />
+            <div style="color:#999;font-size:12px;margin-top:12px;line-height:1.6;">
+              请使用{{ dsPayMethod === 'WECHAT' ? '微信' : '支付宝' }}扫码完成支付<br/>
+              <span style="color:#667eea;">支付成功后点击下方按钮确认</span>
+            </div>
+            <div style="display:flex;gap:8px;margin-top:16px;">
+              <van-button
+                type="default" block round size="small"
+                :loading="statusLoading"
+                @click="onCheckStatus"
+              >
+                我已支付
+              </van-button>
+              <van-button
+                type="primary" block round size="small"
+                style="background:linear-gradient(135deg,#667eea,#764ba2);border:none;"
+                @click="showQrModal = false"
+              >
+                关闭
+              </van-button>
+            </div>
+            <div v-if="statusMsg" style="margin-top:8px;font-size:12px;color:#52c41a;">{{ statusMsg }}</div>
+          </div>
+        </van-overlay>
       </van-tab>
     </van-tabs>
 
@@ -112,28 +208,6 @@
       </div>
     </van-overlay>
 
-    <!-- DeepSeek 扫码支付弹窗 -->
-    <van-overlay :show="showDSQR" @click="showDSQR = false">
-      <div style="display:flex;align-items:center;justify-content:center;height:100%;padding:32px;">
-        <div style="background:#fff;border-radius:16px;padding:24px;text-align:center;max-width:320px;width:100%;">
-          <h3 style="margin:0 0 8px;">DeepSeek 扫码支付</h3>
-          <p style="color:#999;font-size:13px;margin-bottom:16px;">
-            请使用微信/支付宝扫描下方二维码<br/>
-            充值金额：<strong>¥{{ dsAmount }}</strong>
-          </p>
-          <div v-if="dsQRCode" style="background:#f5f5f5;border-radius:12px;padding:16px;margin-bottom:16px;">
-            <img :src="dsQRCode" style="width:200px;height:200px;display:block;margin:0 auto;" />
-          </div>
-          <div v-else style="padding:40px;color:#999;"><van-loading /> 正在生成支付二维码...</div>
-          <p v-if="dsPaymentId" style="font-size:11px;color:#ccc;">{{ dsPaymentId }}</p>
-          <van-button v-if="dsQRCode" plain block round @click="onDSPoll" :loading="dsPolling">我已付款，确认</van-button>
-          <van-button v-if="dsCaptureResult" type="success" block round style="margin-top:8px;">
-            ✅ 充值成功！¥{{ dsAmount }}
-          </van-button>
-          <van-button plain block round style="margin-top:8px;" @click="showDSQR = false">关闭</van-button>
-        </div>
-      </div>
-    </van-overlay>
   </div>
 </template>
 
@@ -151,16 +225,19 @@ const submitting = ref(false)
 const showPayment = ref(false)
 const currentOrder = ref(null)
 
-// DeepSeek 充值
+// DeepSeek 充值相关
 const dsBalance = ref(null)
-const dsAmount = ref(10)
+const dsAmount = ref(1)
 const dsPayMethod = ref('WECHAT')
 const dsSubmitting = ref(false)
-const showDSQR = ref(false)
-const dsQRCode = ref('')
-const dsPaymentId = ref('')
-const dsPolling = ref(false)
-const dsCaptureResult = ref(false)
+const quickAmounts = [1, 10, 30, 50, 100]
+const syncing = ref(false)
+const syncMsg = ref('')
+const showQrModal = ref(false)
+const qrImage = ref('')
+const currentPaymentId = ref('')
+const statusLoading = ref(false)
+const statusMsg = ref('')
 
 function formatNumber(n) {
   if (n >= 100000000) return (n / 100000000).toFixed(1) + '亿'
@@ -212,56 +289,103 @@ async function mockPaySuccess() {
   }
 }
 
-// ─── DeepSeek 充值 ───
+// ─── DeepSeek 扫码充值 ───
 
+/** 创建支付，显示二维码 */
 async function onDsRecharge() {
-  if (!dsAmount.value) return
+  if (!dsAmount.value || dsAmount.value < 1) {
+    showToast('请输入有效金额')
+    return
+  }
   dsSubmitting.value = true
-  dsQRCode.value = ''
-  dsPaymentId.value = ''
-  dsCaptureResult.value = false
+  showQrModal.value = true
+  qrImage.value = ''
+  statusMsg.value = ''
   try {
     const res = await api.post('/mobile/deepseek/payment/create', {
       amount: dsAmount.value,
       method: dsPayMethod.value,
     })
-    dsPaymentId.value = res.data?.payment_order_id
-    // 优先用后端生成的二维码 base64
-    dsQRCode.value = res.data?.qrcode_base64 || res.data?.url || ''
-    logAction('ds_payment_create', '/recharge',
-      `创建DeepSeek充值: ${dsPayMethod.value}¥${dsAmount.value} | ${dsPaymentId.value}`)
-    showDSQR.value = true
+    if (res?.success && res?.data?.qrcode_base64) {
+      qrImage.value = res.data.qrcode_base64
+      currentPaymentId.value = res.data.payment_order_id
+      showToast('二维码生成成功')
+    } else {
+      showToast('创建支付失败')
+      showQrModal.value = false
+    }
   } catch (e) {
-    logAction('ds_payment_error', '/recharge', `创建DeepSeek充值失败: ${e}`)
-    showToast(e.response?.data?.detail || e.message || '创建充值失败')
+    showQrModal.value = false
+    qrImage.value = ''
+    showToast(e.response?.data?.detail || '创建支付失败')
   } finally {
     dsSubmitting.value = false
   }
 }
 
-async function onDSPoll() {
-  if (!dsPaymentId.value) return
-  dsPolling.value = true
+/** 我已支付 — 确认支付状态 */
+async function onCheckStatus() {
+  if (!currentPaymentId.value) return
+  statusLoading.value = true
+  statusMsg.value = ''
   try {
-    const res = await api.post('/mobile/deepseek/payment/capture', { payment_id: dsPaymentId.value })
-    dsCaptureResult.value = true
-    logAction('ds_payment_capture', '/recharge', `DeepSeek充值到账: ¥${dsAmount.value} | ${dsPaymentId.value}`)
-    // 刷新 DeepSeek 余额
-    const bal = await api.get('/mobile/deepseek/balance')
-    dsBalance.value = bal
+    // 先 capture 确认
+    await api.post('/mobile/deepseek/payment/capture', {
+      payment_id: currentPaymentId.value,
+    }).catch(() => {})
+    // 再查状态
+    const statusRes = await api.get('/mobile/deepseek/payment/status', {
+      params: { payment_id: currentPaymentId.value },
+    })
+    if (statusRes?.success) {
+      const st = statusRes.data?.status || ''
+      if (st === 'PAID') {
+        statusMsg.value = '✅ 支付成功！正在同步账单...'
+        showToast('支付成功')
+        await onSyncInvoices()
+        setTimeout(() => { showQrModal.value = false }, 1500)
+      } else if (st === 'CREATED' || st === 'PROCESSING') {
+        statusMsg.value = '⏳ 支付处理中，请稍后再查'
+      } else {
+        statusMsg.value = `状态: ${st}，请稍后再试`
+      }
+    }
   } catch (e) {
-    logAction('ds_payment_poll', '/recharge', `确认支付失败: ${e}`)
-    showToast(e.response?.data?.detail || '支付尚未到账，请稍后再试')
+    statusMsg.value = '查询失败，请确认是否已支付'
   } finally {
-    dsPolling.value = false
+    statusLoading.value = false
   }
 }
 
-function onTabChange() {
-  if (tabActive.value === 1 && !dsBalance.value) {
-    api.get('/mobile/deepseek/balance').then(r => dsBalance.value = r).catch(() => {})
+/** 同步 DeepSeek 账单并刷新余额 */
+async function onSyncInvoices() {
+  syncing.value = true
+  syncMsg.value = ''
+  try {
+    const res = await api.post('/mobile/deepseek/invoices/sync')
+    syncMsg.value = res.message || '同步完成'
+    try {
+      const bal = await api.get('/mobile/deepseek/balance')
+      dsBalance.value = bal
+    } catch (_) {}
+    showToast('账单已同步')
+  } catch (e) {
+    syncMsg.value = '同步失败: ' + (e.response?.data?.detail || e.message)
+  } finally {
+    syncing.value = false
   }
 }
+
+/** Tab 切换时刷新余额 */
+function onTabChange() {
+  if (tabActive.value === 1) {
+    if (!dsBalance.value) {
+      api.get('/mobile/deepseek/balance').then(r => dsBalance.value = r).catch(() => {})
+    }
+  }
+}
+
+// ─── 生命周期 ───
 
 onMounted(async () => {
   try {

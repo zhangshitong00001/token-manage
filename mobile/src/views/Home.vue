@@ -66,7 +66,7 @@
             }"
           ></div>
           <span style="font-size:10px;color:#999;margin-top:4px;">
-            {{ item.date.slice(5) }}
+            {{ item.date }}
           </span>
         </div>
       </div>
@@ -81,7 +81,7 @@
           v-for="(o, i) in orders"
           :key="i"
           :title="'订单: ' + o.order_no.slice(-12)"
-          :label="'状态: ' + (o.pay_status === 1 ? '✅ 已支付' : '⏳ 待支付') + ' | ' + (o.create_time || '').slice(0, 16)"
+          :label="'状态: ' + (o.pay_status === 1 ? '✅ 已支付' : '⏳ 待支付') + ' | ' + (o.create_time || '')"
           :value="'¥' + (o.amount_cent / 100).toFixed(2)"
         />
       </div>

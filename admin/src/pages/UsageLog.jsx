@@ -36,7 +36,7 @@ export default function UsageLog() {
     { title: '输出Token', dataIndex: 'output_tokens', render: (v) => v?.toLocaleString() },
     { title: '消耗', dataIndex: 'total_cost', render: (v) => <strong>{v?.toLocaleString()}</strong> },
     { title: '请求ID', dataIndex: 'request_id', render: (v) => <code style={{ fontSize: 11 }}>{v?.slice(0, 20)}...</code> },
-    { title: '时间', dataIndex: 'usage_time', render: (v) => dayjs(v).format('MM-DD HH:mm:ss') },
+    { title: '时间', dataIndex: 'usage_time', render: (v) => dayjs(v).format('YYYY-MM-DD HH:mm:ss') },
   ]
 
   const handleExport = () => {

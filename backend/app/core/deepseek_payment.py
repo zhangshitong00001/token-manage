@@ -23,7 +23,10 @@ class DeepSeekPayment:
 
     LOGIN_URL = "https://platform.deepseek.com/auth-api/v0/users/login"
     PAYMENT_URL = "https://platform.deepseek.com/api/v1/payments"
+    INVOICE_URL = "https://platform.deepseek.com/auth-api/v0/users/get_all_invoice"
     BALANCE_URL = "https://api.deepseek.com/user/balance"
+    # 用 .env 或在调用时可以注入的持久化 Token
+    _PERSISTENT_TOKEN = ""  # 可在运行时设置
 
     UA = ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
           "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
@@ -147,8 +150,22 @@ class DeepSeekPayment:
         if data.get("code") != 0:
             raise RuntimeError(f"DeepSeek 支付创建失败: {data.get('msg', resp.text[:200])}")
 
+        # 检查 biz_code 业务错误（即使 HTTP 200 + code=0）
+        biz_data = data.get("data") or {}
+        biz_code = biz_data.get("biz_code")
+        biz_msg = biz_data.get("biz_msg", "")
+        if biz_code and biz_code != 0:
+            friendly = {
+                "DAILY_LIMIT_EXCEEDED": "今日充值限额已用尽，请明天再试或联系 DeepSeek 客服",
+                "AMOUNT_TOO_SMALL": "充值金额低于最低限额，请增加金额",
+                "AMOUNT_TOO_LARGE": "充值金额超出上限，请降低金额",
+            }
+            msg = friendly.get(biz_msg) or f"DeepSeek 业务错误: {biz_msg}"
+            logger.error(f"支付创建业务错误: code={biz_code} msg={biz_msg}")
+            raise RuntimeError(msg)
+
         # data.data.biz_data 可能直接是结果，也可能嵌套了 biz_data
-        biz = (data.get("data") or {}).get("biz_data") or {}
+        biz = biz_data.get("biz_data") or {}
         if "biz_data" in biz and isinstance(biz["biz_data"], dict):
             biz = biz["biz_data"]
 
@@ -204,6 +221,69 @@ class DeepSeekPayment:
         if not resp.ok:
             self._raise_error(resp)
         return resp.json()
+
+    def get_invoices(self, override_token: str = "") -> list[dict]:
+        """获取 DeepSeek 平台所有充值账单记录
+        可传入 override_token 使用外部有效 Token（如用户从浏览器复制的）
+        """
+        token = override_token or self._PERSISTENT_TOKEN
+        if token:
+            # 用外部 Token 创建一个独立的 session 请求
+            sess = requests.Session()
+            sess.headers.update({
+                "authorization": f"Bearer {token}",
+                "content-type": "application/json",
+                "user-agent": self.UA,
+            })
+            # 设置 cf_clearance cookie（get_all_invoice 接口需要）
+            cf = settings.DEEPSEEK_CF_CLEARANCE
+            if cf:
+                sess.cookies.set("cf_clearance", cf)
+        from datetime import datetime as dt
+        headers = {
+            "accept": "*/*",
+            "pragma": "no-cache",
+            "priority": "u=1, i",
+            "referer": "https://platform.deepseek.com/transactions",
+            "sec-ch-ua": '"Chromium";v="148", "Google Chrome";v="148", "Not/A)Brand";v="99"',
+            "sec-ch-ua-mobile": "?0",
+            "sec-ch-ua-platform": '"Windows"',
+            "sec-fetch-dest": "empty",
+            "sec-fetch-mode": "cors",
+            "sec-fetch-site": "same-origin",
+            "x-app-version": "1.0.0",
+        }
+        # 选择 session：外部 Token 用独立 session，否则用 self._session（含自动登录）
+        use_session = sess if token else self._session
+
+        merged = use_session.headers.copy()
+        merged.update(headers)
+        resp = use_session.get(self.INVOICE_URL, headers=merged, timeout=15)
+        if resp.status_code == 401:
+            if token:
+                raise RuntimeError("DeepSeek Token 已过期，请重新获取")
+            self._expires_at = 0
+            self._ensure_token()
+            resp = self._session.get(self.INVOICE_URL, headers=merged, timeout=15)
+        if not resp.ok:
+            self._raise_error(resp)
+        data = resp.json()
+        if data.get("code") != 0:
+            raise RuntimeError(f"获取账单失败: {data.get('msg', resp.text[:200])}")
+        orders = (((data.get("data") or {}).get("biz_data") or {})
+                   .get("invoices") or {}).get("payment_orders") or []
+        # 解析支付方式
+        for o in orders:
+            pid = o.get("payment_order_id", "")
+            if pid.startswith("wechat"):
+                o["_method"] = "wechat"
+            elif pid.startswith("alipay"):
+                o["_method"] = "alipay"
+            elif pid.startswith("cmbUnionPay"):
+                o["_method"] = "unionpay"
+            else:
+                o["_method"] = "other"
+        return orders
 
     def _raise_error(self, resp: requests.Response):
         detail = resp.text[:300]

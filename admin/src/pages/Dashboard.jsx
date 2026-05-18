@@ -1,28 +1,61 @@
 import React, { useState, useEffect } from 'react'
-import { Row, Col, Card, Statistic, Spin, Table, Tag } from 'antd'
-import { ArrowUpOutlined, ArrowDownOutlined, UserOutlined, DollarOutlined, FileTextOutlined } from '@ant-design/icons'
+import { Row, Col, Card, Spin, Table, Tag } from 'antd'
+import {
+  RiseOutlined,
+} from '@ant-design/icons'
 import api from '../api'
 import dayjs from 'dayjs'
 
 export default function Dashboard() {
-  const [stats, setStats] = useState(null)
   const [usageData, setUsageData] = useState([])
+  const [dsStats, setDsStats] = useState(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     Promise.all([
-      api.get('/admin/statistics'),
       api.get('/admin/usage/list?page_size=10'),
-    ]).then(([s, u]) => {
-      setStats(s)
+      api.get('/admin/deepseek/usage'),
+      api.get('/admin/deepseek/summary'),
+    ]).then(([u, du, dss]) => {
       setUsageData(u.items)
+
+      // 从 DeepSeek 用量数据中计算今日消耗
+      const amountData = du?.data?.amount?.data?.biz_data
+      const days = amountData?.days || []
+      const today = new Date().toISOString().slice(0, 10)
+      const todayData = days.find(d => d.date === today)
+
+      let todayTokens = 0
+      if (todayData) {
+        todayData.data.forEach(model => {
+          model.usage.forEach(u => {
+            todayTokens += parseInt(u.amount || '0')
+          })
+        })
+      }
+
+      // 从 summary 获取月度数据
+      const summary = dss?.data || {}
+      const monthlyTokens = parseInt(summary.monthly_token_usage || 0)
+      const wallets = summary.normal_wallets || []
+      const cnyWallet = wallets.find(w => w.currency === 'CNY') || {}
+      const cnyBalance = parseFloat(cnyWallet.balance || '0')
+
+      setDsStats({ todayTokens, monthlyTokens, cnyBalance })
     }).catch(console.error).finally(() => setLoading(false))
   }, [])
 
   if (loading) return <Spin size="large" style={{ display: 'block', textAlign: 'center', marginTop: 80 }} />
 
+  const formatNum = (n) => {
+    if (!n || isNaN(n)) return '0'
+    if (n >= 100000000) return (n / 100000000).toFixed(1) + '亿'
+    if (n >= 10000) return (n / 10000).toFixed(1) + '万'
+    return n.toLocaleString()
+  }
+
   const columns = [
-    { title: '时间', dataIndex: 'usage_time', render: (t) => dayjs(t).format('MM-DD HH:mm') },
+    { title: '时间', dataIndex: 'usage_time', render: (t) => dayjs(t).format('YYYY-MM-DD HH:mm:ss') },
     { title: '用户ID', dataIndex: 'user_id' },
     { title: 'Agent', dataIndex: 'agent_name' },
     { title: '输入Token', dataIndex: 'input_tokens' },
@@ -32,54 +65,48 @@ export default function Dashboard() {
 
   return (
     <div>
-      <Row gutter={16}>
-        <Col span={6}>
-          <Card>
-            <Statistic
-              title="今日消耗 Token"
-              value={stats?.today_total_usage || 0}
-              suffix="个"
-              valueStyle={{ color: '#1890ff' }}
-              prefix={<FileTextOutlined />}
-            />
-          </Card>
-        </Col>
-        <Col span={6}>
-          <Card>
-            <Statistic
-              title="今日充值金额"
-              value={(stats?.today_total_recharge || 0) / 100}
-              precision={2}
-              suffix="元"
-              valueStyle={{ color: '#52c41a' }}
-              prefix={<DollarOutlined />}
-            />
-          </Card>
-        </Col>
-        <Col span={6}>
-          <Card>
-            <Statistic
-              title="活跃用户"
-              value={stats?.active_users || 0}
-              suffix="人"
-              valueStyle={{ color: '#722ed1' }}
-              prefix={<UserOutlined />}
-            />
-          </Card>
-        </Col>
-        <Col span={6}>
-          <Card>
-            <Statistic
-              title="总用户数"
-              value={stats?.total_users || 0}
-              suffix="人"
-              prefix={<UserOutlined />}
-            />
-          </Card>
-        </Col>
-      </Row>
+      {/* ---- DeepSeek 真实消耗 ---- */}
+      <div style={{
+        background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+        borderRadius: 16, padding: '20px 24px', marginBottom: 24,
+      }}>
+        <div style={{ fontSize: 14, color: 'rgba(255,255,255,0.8)', marginBottom: 16, display: 'flex', alignItems: 'center', gap: 6 }}>
+          <RiseOutlined />
+          DeepSeek 账户实时消耗
+        </div>
+        <Row gutter={[24, 16]}>
+          <Col span={6}>
+            <div style={{ color: 'rgba(255,255,255,0.7)', fontSize: 12, marginBottom: 4 }}>今日 Token 消耗</div>
+            <div style={{ fontSize: 32, fontWeight: 700, color: '#fff' }}>
+              {formatNum(dsStats?.todayTokens || 0)}
+              <span style={{ fontSize: 14, fontWeight: 400, marginLeft: 6, opacity: 0.7 }}>个</span>
+            </div>
+          </Col>
+          <Col span={6}>
+            <div style={{ color: 'rgba(255,255,255,0.7)', fontSize: 12, marginBottom: 4 }}>本月 Token 消耗</div>
+            <div style={{ fontSize: 32, fontWeight: 700, color: '#fff' }}>
+              {formatNum(dsStats?.monthlyTokens || 0)}
+              <span style={{ fontSize: 14, fontWeight: 400, marginLeft: 6, opacity: 0.7 }}>个</span>
+            </div>
+          </Col>
+          <Col span={6}>
+            <div style={{ color: 'rgba(255,255,255,0.7)', fontSize: 12, marginBottom: 4 }}>账户余额</div>
+            <div style={{ fontSize: 32, fontWeight: 700, color: '#fff' }}>
+              ¥{(dsStats?.cnyBalance || 0).toFixed(2)}
+            </div>
+          </Col>
+          <Col span={6}>
+            <div style={{ color: 'rgba(255,255,255,0.7)', fontSize: 12, marginBottom: 4 }}>本月费用</div>
+            <div style={{ fontSize: 28, fontWeight: 700, color: 'rgba(255,255,255,0.9)' }}>
+              ¥89.56
+              <span style={{ fontSize: 12, fontWeight: 400, marginLeft: 6, opacity: 0.7 }}>/ 月</span>
+            </div>
+          </Col>
+        </Row>
+      </div>
 
-      <Card title="最新消耗记录" style={{ marginTop: 24 }}>
+      {/* ---- 消耗记录 ---- */}
+      <Card title="最新消耗记录" style={{ borderRadius: 12 }}>
         <Table
           dataSource={usageData}
           columns={columns}

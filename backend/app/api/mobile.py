@@ -2,7 +2,7 @@
 from fastapi import APIRouter, Depends, UploadFile, File, HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy import func
-from datetime import date, timedelta
+from datetime import date, timedelta, datetime as dt
 from pathlib import Path
 
 from app.database import get_db
@@ -134,6 +134,117 @@ def query_deepseek_payment(
         return {"success": True, "data": result}
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"查询支付失败: {str(e)}")
+
+
+# ---- DeepSeek 账单同步 ----
+from app.models.deepseek_invoice import DeepSeekInvoice
+
+
+@router.post("/deepseek/invoices/sync")
+def sync_deepseek_invoices(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """从 DeepSeek 平台同步充值账单到本地"""
+    try:
+        token = settings.DEEPSEEK_USER_TOKEN
+        orders = _ds_pay.get_invoices(override_token=token)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"同步失败: {str(e)}")
+
+    now = dt.utcnow()
+    new_count = 0
+    for o in orders:
+        pid = o.get("payment_order_id", "")
+        if not pid:
+            continue
+        existing = db.query(DeepSeekInvoice).filter(
+            DeepSeekInvoice.payment_order_id == pid
+        ).first()
+        if existing:
+            existing.status = o.get("payment_order_status", existing.status)
+            existing.updated_at = dt.fromisoformat(o["updated_at"].replace("Z", "+00:00")) if o.get("updated_at") else existing.updated_at
+            if o.get("paid_at"):
+                existing.paid_at = dt.fromisoformat(o["paid_at"].replace("Z", "+00:00")) if isinstance(o["paid_at"], str) else existing.paid_at
+            existing.sync_at = now
+        else:
+            paid_at = None
+            if o.get("paid_at"):
+                try:
+                    paid_at = dt.fromisoformat(o["paid_at"].replace("Z", "+00:00"))
+                except Exception:
+                    paid_at = None
+            inserted_at = None
+            if o.get("inserted_at"):
+                try:
+                    inserted_at = dt.fromisoformat(o["inserted_at"].replace("Z", "+00:00"))
+                except Exception:
+                    inserted_at = None
+            updated_at = None
+            if o.get("updated_at"):
+                try:
+                    updated_at = dt.fromisoformat(o["updated_at"].replace("Z", "+00:00"))
+                except Exception:
+                    updated_at = None
+
+            invoice = DeepSeekInvoice(
+                payment_order_id=pid,
+                amount=int(float(o.get("amount", 0))),
+                currency=o.get("currency", "CNY"),
+                status=o.get("payment_order_status", "CREATED"),
+                payment_method=o.get("_method", ""),
+                paid_at=paid_at,
+                inserted_at=inserted_at,
+                updated_at=updated_at,
+                sync_at=now,
+            )
+            db.add(invoice)
+            new_count += 1
+
+    db.commit()
+    return {
+        "success": True,
+        "message": f"同步完成，新增 {new_count} 条，共 {len(orders)} 条记录",
+        "total_orders": len(orders),
+        "new_records": new_count,
+    }
+
+
+@router.get("/deepseek/invoices")
+def list_deepseek_invoices(
+    page: int = 1,
+    page_size: int = 20,
+    status: str = "",
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """查询本地 DeepSeek 充值账单"""
+    q = db.query(DeepSeekInvoice)
+    if status:
+        q = q.filter(DeepSeekInvoice.status == status.upper())
+    total = q.count()
+    items = q.order_by(DeepSeekInvoice.inserted_at.desc().nullslast()) \
+             .offset((page - 1) * page_size).limit(page_size).all()
+    return {
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+        "items": [
+            {
+                "id": r.id,
+                "payment_order_id": r.payment_order_id,
+                "amount": r.amount,
+                "currency": r.currency,
+                "status": r.status,
+                "payment_method": r.payment_method,
+                "paid_at": r.paid_at.isoformat() if r.paid_at else None,
+                "inserted_at": r.inserted_at.isoformat() if r.inserted_at else None,
+                "sync_at": r.sync_at.isoformat() if r.sync_at else None,
+            }
+            for r in items
+        ],
+    }
+
 
 
 # ---- 系统级消耗（与后台管理后台SystemUsage保持一致）----

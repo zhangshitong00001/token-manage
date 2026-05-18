@@ -502,3 +502,147 @@ async def upload_file(
         "size_mb": round(size_mb, 2),
         "path": str(file_path),
     }
+
+
+# ============================================================
+# DeepSeek 平台数据（安全代理，API Key 脱敏）
+# ============================================================
+
+DEEPSEEK_BASE = "https://platform.deepseek.com"
+
+
+def _ds_headers() -> dict:
+    return {
+        "accept": "*/*",
+        "authorization": f"Bearer {settings.DEEPSEEK_USER_TOKEN}",
+        "content-type": "application/json",
+        "pragma": "no-cache",
+        "referer": "https://platform.deepseek.com/",
+        "sec-ch-ua": '"Chromium";v="148", "Google Chrome";v="148", "Not/A)Brand";v="99"',
+        "sec-ch-ua-mobile": "?0",
+        "sec-ch-ua-platform": '"Windows"',
+        "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/148.0.0.0 Safari/537.36",
+        "x-app-version": "1.0.0",
+    }
+
+
+def _mask_api_key(key: str) -> str:
+    """脱敏 API Key：只保留前缀6位 + 末尾4位"""
+    if len(key) <= 12:
+        return key[:6] + "..." + key[-4:]
+    return key[:6] + "*" * (len(key) - 10) + key[-4:]
+
+
+@router.get("/deepseek/api-keys")
+def ds_get_api_keys(admin: User = Depends(get_admin_user)):
+    """获取 DeepSeek API Key 列表（自动脱敏）"""
+    try:
+        resp = requests.get(
+            f"{DEEPSEEK_BASE}/api/v0/users/get_api_keys",
+            headers=_ds_headers(), timeout=15,
+        )
+        if resp.status_code != 200:
+            raise HTTPException(502, f"DeepSeek 接口错误: {resp.status_code}")
+        data = resp.json()
+        if data.get("code") != 0:
+            raise HTTPException(502, f"DeepSeek 业务错误: {data.get('msg', '')}")
+        keys = data.get("data", {}).get("biz_data", {}).get("api_keys", [])
+        result = []
+        for k in keys:
+            full_id = k.get("sensitive_id", "")
+            result.append({
+                "tracking_id": k.get("tracking_id", ""),
+                "name": k.get("name", ""),
+                "masked_key": _mask_api_key(full_id),
+                "created_at": k.get("created_at", 0),
+                "last_use": k.get("last_use", 0),
+            })
+        return {"success": True, "items": result}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(502, f"获取 API Key 失败: {str(e)}")
+
+
+@router.post("/deepseek/api-keys/reveal")
+def ds_reveal_api_key(data: dict, admin: User = Depends(get_admin_user)):
+    """揭示完整 API Key（仅管理员可调，返回明文）"""
+    tracking_id = data.get("tracking_id", "")
+    if not tracking_id:
+        raise HTTPException(400, "缺少 tracking_id")
+    try:
+        resp = requests.get(
+            f"{DEEPSEEK_BASE}/api/v0/users/get_api_keys",
+            headers=_ds_headers(), timeout=15,
+        )
+        data = resp.json()
+        keys = data.get("data", {}).get("biz_data", {}).get("api_keys", [])
+        for k in keys:
+            if k.get("tracking_id") == tracking_id:
+                return {
+                    "success": True,
+                    "key": k.get("sensitive_id", ""),
+                    "name": k.get("name", ""),
+                }
+        raise HTTPException(404, "未找到该 API Key")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(502, f"揭示 API Key 失败: {str(e)}")
+
+
+@router.get("/deepseek/usage")
+def ds_get_usage(
+    month: int = 0, year: int = 0,
+    admin: User = Depends(get_admin_user),
+):
+    """获取 DeepSeek 本月用量 + 费用"""
+    from datetime import datetime as dt
+    now = dt.now()
+    m = month or now.month
+    y = year or now.year
+    result = {"amount": None, "cost": None}
+    for ep_name, ep_path in [("amount", "/api/v0/usage/amount"), ("cost", "/api/v0/usage/cost")]:
+        try:
+            r = requests.get(
+                f"{DEEPSEEK_BASE}{ep_path}",
+                params={"month": m, "year": y},
+                headers=_ds_headers(), timeout=15,
+            )
+            if r.ok:
+                result[ep_name] = r.json()
+        except:
+            pass
+    return {"success": True, "month": m, "year": y, "data": result}
+
+
+@router.get("/deepseek/summary")
+def ds_get_summary(admin: User = Depends(get_admin_user)):
+    """获取 DeepSeek 账户摘要"""
+    try:
+        resp = requests.get(
+            f"{DEEPSEEK_BASE}/api/v0/users/get_user_summary",
+            headers=_ds_headers(), timeout=15,
+        )
+        if resp.status_code != 200:
+            raise HTTPException(502, f"DeepSeek 接口错误: {resp.status_code}")
+        data = resp.json()
+        if data.get("code") != 0:
+            raise HTTPException(502, f"DeepSeek 业务错误: {data.get('msg', '')}")
+        biz = data.get("data", {}).get("biz_data", {})
+        return {
+            "success": True,
+            "data": {
+                "current_token": biz.get("current_token", 0),
+                "monthly_usage": biz.get("monthly_usage", "0"),
+                "total_available_token_estimation": biz.get("total_available_token_estimation", "0"),
+                "monthly_token_usage": biz.get("monthly_token_usage", "0"),
+                "normal_wallets": biz.get("normal_wallets", []),
+                "bonus_wallets": biz.get("bonus_wallets", []),
+                "monthly_costs": biz.get("monthly_costs", []),
+            },
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(502, f"获取账户摘要失败: {str(e)}")
