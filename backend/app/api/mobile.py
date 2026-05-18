@@ -99,7 +99,9 @@ def create_deepseek_payment(
 ):
     """创建 DeepSeek 充值二维码"""
     try:
-        result = _ds_pay.create_qr_payment(data.get("amount"))
+        amount = data.get("amount", 10)
+        method = data.get("method", "WECHAT")  # WECHAT / ALIPAY
+        result = _ds_pay.create_qr_payment(amount, method)
         return {"success": True, "data": result}
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"创建支付失败: {str(e)}")

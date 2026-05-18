@@ -64,6 +64,21 @@
             </div>
           </div>
 
+          <!-- 支付方式选择 -->
+          <van-cell title="支付方式" style="font-weight:600;border-radius:12px 12px 0 0;" />
+          <van-radio-group v-model="dsPayMethod" style="background:#fff;border-radius:0 0 12px 12px;margin-bottom:12px;">
+            <van-cell-group :border="false">
+              <van-cell clickable @click="dsPayMethod = 'WECHAT'">
+                <template #title><van-icon name="wechat" color="#07c160" style="margin-right:8px;" />微信支付</template>
+                <template #value><van-radio name="WECHAT" /></template>
+              </van-cell>
+              <van-cell clickable @click="dsPayMethod = 'ALIPAY'">
+                <template #title><van-icon name="alipay" color="#1677ff" style="margin-right:8px;" />支付宝</template>
+                <template #value><van-radio name="ALIPAY" /></template>
+              </van-cell>
+            </van-cell-group>
+          </van-radio-group>
+
           <!-- 充值金额选择 -->
           <van-cell title="选择充值金额" style="font-weight:600;border-radius:12px 12px 0 0;" />
           <van-radio-group v-model="dsAmount" style="background:#fff;border-radius:0 0 12px 12px;margin-bottom:12px;">
@@ -139,6 +154,7 @@ const currentOrder = ref(null)
 // DeepSeek 充值
 const dsBalance = ref(null)
 const dsAmount = ref(10)
+const dsPayMethod = ref('WECHAT')
 const dsSubmitting = ref(false)
 const showDSQR = ref(false)
 const dsQRCode = ref('')
@@ -205,10 +221,15 @@ async function onDsRecharge() {
   dsPaymentId.value = ''
   dsCaptureResult.value = false
   try {
-    const res = await api.post('/mobile/deepseek/payment/create', { amount: dsAmount.value })
-    dsPaymentId.value = res.data?.payment_id
-    dsQRCode.value = res.data?.qrcode_url || res.data?.qrcode_base64
-    logAction('ds_payment_create', '/recharge', `创建DeepSeek充值: ¥${dsAmount.value} | ${dsPaymentId.value}`)
+    const res = await api.post('/mobile/deepseek/payment/create', {
+      amount: dsAmount.value,
+      method: dsPayMethod.value,
+    })
+    dsPaymentId.value = res.data?.payment_order_id
+    // 优先用后端生成的二维码 base64
+    dsQRCode.value = res.data?.qrcode_base64 || res.data?.url || ''
+    logAction('ds_payment_create', '/recharge',
+      `创建DeepSeek充值: ${dsPayMethod.value}¥${dsAmount.value} | ${dsPaymentId.value}`)
     showDSQR.value = true
   } catch (e) {
     logAction('ds_payment_error', '/recharge', `创建DeepSeek充值失败: ${e}`)
