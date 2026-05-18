@@ -306,6 +306,133 @@ def sync_system_usage(
     return {"message": f"{stats_date} 数据同步成功", "record": stats_date_str}
 
 
+# ---- Hermes Agent 实时消耗（直读 state.db） ----
+import sqlite3
+from pathlib import Path as _Path
+
+_HERMES_STATE_DB = str(_Path.home() / ".hermes" / "state.db")
+
+
+def _get_state_db():
+    conn = sqlite3.connect(f"file:{_HERMES_STATE_DB}?mode=ro", uri=True)
+    conn.row_factory = sqlite3.Row
+    return conn
+
+
+@router.get("/system-usage/realtime")
+def get_realtime_usage(
+    hours: int = Query(24, ge=1, le=720, description="最近N小时"),
+    admin: User = Depends(get_admin_user),
+):
+    """Hermes Agent 实时Token消耗（直读 state.db）"""
+    import time
+    now = time.time()
+    since_ts = now - hours * 3600
+
+    conn = _get_state_db()
+
+    # 1. 整体汇总
+    agg = conn.execute(
+        """SELECT
+            COUNT(*) as session_count,
+            COALESCE(SUM(input_tokens), 0) as input_tokens,
+            COALESCE(SUM(output_tokens), 0) as output_tokens,
+            COALESCE(SUM(cache_read_tokens), 0) as cache_read_tokens,
+            COALESCE(SUM(cache_write_tokens), 0) as cache_write_tokens,
+            COALESCE(SUM(reasoning_tokens), 0) as reasoning_tokens,
+            COALESCE(SUM(estimated_cost_usd), 0) as estimated_cost_usd,
+            COALESCE(SUM(api_call_count), 0) as api_call_count,
+            COALESCE(SUM(tool_call_count), 0) as tool_call_count
+        FROM sessions WHERE started_at >= ?""",
+        (since_ts,),
+    ).fetchone()
+
+    # 2. 按 source 分组
+    sources = conn.execute(
+        """SELECT source, COUNT(*) as cnt,
+            COALESCE(SUM(input_tokens),0) as input_tokens,
+            COALESCE(SUM(output_tokens),0) as output_tokens
+        FROM sessions WHERE started_at >= ?
+        GROUP BY source ORDER BY input_tokens + output_tokens DESC""",
+        (since_ts,),
+    ).fetchall()
+
+    # 3. 按 model 分组
+    models = conn.execute(
+        """SELECT COALESCE(model,'unknown') as model, COUNT(*) as cnt,
+            COALESCE(SUM(input_tokens),0) as input_tokens,
+            COALESCE(SUM(output_tokens),0) as output_tokens,
+            COALESCE(SUM(cache_read_tokens),0) as cache_read_tokens
+        FROM sessions WHERE started_at >= ?
+        GROUP BY model ORDER BY input_tokens + output_tokens DESC""",
+        (since_ts,),
+    ).fetchall()
+
+    # 4. 最近 session
+    recent = conn.execute(
+        """SELECT id, source, model, input_tokens, output_tokens,
+            cache_read_tokens, started_at, ended_at, message_count, tool_call_count
+        FROM sessions WHERE started_at >= ?
+        ORDER BY started_at DESC LIMIT 50""",
+        (since_ts,),
+    ).fetchall()
+    conn.close()
+
+    return {
+        "period_hours": hours,
+        "query_time": datetime.now().isoformat(),
+        "summary": {
+            "session_count": agg["session_count"],
+            "input_tokens": agg["input_tokens"],
+            "output_tokens": agg["output_tokens"],
+            "cache_read_tokens": agg["cache_read_tokens"],
+            "cache_write_tokens": agg["cache_write_tokens"],
+            "reasoning_tokens": agg["reasoning_tokens"],
+            "total_tokens": agg["input_tokens"] + agg["output_tokens"],
+            "estimated_cost_usd": round(agg["estimated_cost_usd"], 6),
+            "api_call_count": agg["api_call_count"],
+            "tool_call_count": agg["tool_call_count"],
+        },
+        "by_source": [
+            {
+                "source": r["source"],
+                "session_count": r["cnt"],
+                "input_tokens": r["input_tokens"],
+                "output_tokens": r["output_tokens"],
+                "total_tokens": r["input_tokens"] + r["output_tokens"],
+            }
+            for r in sources
+        ],
+        "by_model": [
+            {
+                "model": r["model"],
+                "session_count": r["cnt"],
+                "input_tokens": r["input_tokens"],
+                "output_tokens": r["output_tokens"],
+                "cache_read_tokens": r["cache_read_tokens"],
+                "total_tokens": r["input_tokens"] + r["output_tokens"],
+            }
+            for r in models
+        ],
+        "recent_sessions": [
+            {
+                "session_id": r["id"],
+                "source": r["source"],
+                "model": r["model"] or "unknown",
+                "input_tokens": r["input_tokens"],
+                "output_tokens": r["output_tokens"],
+                "cache_read_tokens": r["cache_read_tokens"],
+                "total_tokens": r["input_tokens"] + r["output_tokens"],
+                "started_at": r["started_at"],
+                "duration_s": round(r["ended_at"] - r["started_at"], 1) if r["ended_at"] else None,
+                "message_count": r["message_count"],
+                "tool_call_count": r["tool_call_count"],
+            }
+            for r in recent
+        ],
+    }
+
+
 @router.get("/deepseek/balance")
 def admin_deepseek_balance(admin: User = Depends(get_admin_user)):
     """查询 DeepSeek 账户实时余额（管理后台使用）"""
