@@ -22,6 +22,7 @@
       placeholder
     >
       <van-tabbar-item name="home" icon="home-o" to="/home">首页</van-tabbar-item>
+      <van-tabbar-item name="chat" icon="chat-o" to="/chat">AI助手</van-tabbar-item>
       <van-tabbar-item name="usage" icon="chart-trending-o" to="/usage">消耗</van-tabbar-item>
       <van-tabbar-item name="recharge" icon="gold-coin-o" to="/recharge">充值</van-tabbar-item>
       <van-tabbar-item name="profile" icon="contact-o" to="/profile">我的</van-tabbar-item>
@@ -41,7 +42,7 @@ const active = ref('home')
 watch(
   () => route.name,
   (name) => {
-    const map = { Home: 'home', Usage: 'usage', Recharge: 'recharge', Profile: 'profile' }
+    const map = { Home: 'home', Chat: 'chat', Usage: 'usage', Recharge: 'recharge', Profile: 'profile' }
     if (map[name]) active.value = map[name]
   },
   { immediate: true }

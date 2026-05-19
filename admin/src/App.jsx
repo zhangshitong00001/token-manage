@@ -5,7 +5,7 @@ import {
   DollarOutlined, FileTextOutlined, SettingOutlined,
   LogoutOutlined, WarningOutlined, DownOutlined,
   SafetyOutlined, BarChartOutlined, CloudUploadOutlined,
-  KeyOutlined,
+  KeyOutlined, MessageOutlined,
 } from '@ant-design/icons'
 import { Routes, Route, useNavigate, useLocation } from 'react-router-dom'
 import Login from './pages/Login'
@@ -18,6 +18,7 @@ import UsageLog from './pages/UsageLog'
 import SystemUsage from './pages/SystemUsage'
 import UploadPage from './pages/Upload'
 import DeepSeek from './pages/DeepSeek'
+import Chat from './pages/Chat'
 import api from './api'
 import useIdleTimer from './useIdleTimer'
 
@@ -33,6 +34,7 @@ const menuItems = [
   { key: '/admin/system-usage', icon: <BarChartOutlined />, label: '系统消耗' },
   { key: '/admin/upload', icon: <CloudUploadOutlined />, label: '文件上传' },
   { key: '/admin/deepseek', icon: <KeyOutlined />, label: 'DeepSeek 管理' },
+  { key: '/admin/chat', icon: <MessageOutlined />, label: 'AI 助手' },
 ]
 
 function AppLayout() {
@@ -214,6 +216,7 @@ function AppLayout() {
             <Route path="/admin/system-usage" element={<SystemUsage />} />
             <Route path="/admin/upload" element={<UploadPage />} />
             <Route path="/admin/deepseek" element={<DeepSeek />} />
+            <Route path="/admin/chat" element={<Chat />} />
             <Route path="*" element={<Dashboard />} />
           </Routes>
         </Content>

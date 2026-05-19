@@ -38,6 +38,12 @@ const routes = [
     component: () => import('../views/Bills.vue'),
     meta: { title: 'DeepSeek 账单' },
   },
+  {
+    path: '/chat',
+    name: 'Chat',
+    component: () => import('../views/Chat.vue'),
+    meta: { title: 'AI 助手' },
+  },
 ]
 
 const router = createRouter({
