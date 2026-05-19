@@ -5,22 +5,11 @@ const api = axios.create({
   timeout: 10000,
 })
 
-// 请求拦截器 - 自动携带 Token
-api.interceptors.request.use((config) => {
-  const token = localStorage.getItem('token')
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`
-  }
-  return config
-})
-
 // 响应拦截器 - 自动处理 401
 api.interceptors.response.use(
   (res) => res.data,
   (err) => {
     if (err.response?.status === 401) {
-      localStorage.removeItem('token')
-      localStorage.removeItem('user')
       window.location.hash = '#/login'
     }
     return Promise.reject(err)

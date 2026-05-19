@@ -18,6 +18,7 @@ from app.models.system_daily_usage import SystemDailyUsage
 from app.schemas import (
     AdminUserUpdate, PriceConfigOut, PriceConfigUpdate,
     AdminStats, PackageOut, PackageUpdate, UserProfile,
+    SystemUsageSync,
 )
 from app.core.deps import get_admin_user
 router = APIRouter(prefix="/api/admin", tags=["管理后台"])
@@ -271,12 +272,12 @@ def get_system_usage_summary(
 
 @router.post("/system-usage/sync")
 def sync_system_usage(
-    data: dict,
+    data: SystemUsageSync,
     admin: User = Depends(get_admin_user),
     db: Session = Depends(get_db),
 ):
     """手动触发某天数据同步（供管理后台调用）"""
-    stats_date_str = data.get("stats_date", date.today().isoformat())
+    stats_date_str = data.stats_date or date.today().isoformat()
     try:
         stats_date = date.fromisoformat(stats_date_str)
     except ValueError:
@@ -291,15 +292,15 @@ def sync_system_usage(
     # 写入记录
     record = SystemDailyUsage(
         stats_date=stats_date,
-        total_input_tokens=data.get("total_input_tokens", 0),
-        total_output_tokens=data.get("total_output_tokens", 0),
-        total_cache_read_tokens=data.get("total_cache_read_tokens", 0),
-        total_cache_write_tokens=data.get("total_cache_write_tokens", 0),
-        total_reasoning_tokens=data.get("total_reasoning_tokens", 0),
-        session_count=data.get("session_count", 0),
-        api_call_count=data.get("api_call_count", 0),
-        tool_call_count=data.get("tool_call_count", 0),
-        estimated_cost_usd=data.get("estimated_cost_usd", 0),
+        total_input_tokens=data.total_input_tokens,
+        total_output_tokens=data.total_output_tokens,
+        total_cache_read_tokens=data.total_cache_read_tokens,
+        total_cache_write_tokens=data.total_cache_write_tokens,
+        total_reasoning_tokens=data.total_reasoning_tokens,
+        session_count=data.session_count,
+        api_call_count=data.api_call_count,
+        tool_call_count=data.tool_call_count,
+        estimated_cost_usd=data.estimated_cost_usd,
     )
     db.add(record)
     db.commit()

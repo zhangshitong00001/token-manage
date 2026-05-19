@@ -1,6 +1,6 @@
 """API路由 - 认证（仅邮箱验证码登录）"""
 
-from fastapi import APIRouter, Depends, HTTPException, Body
+from fastapi import APIRouter, Depends, HTTPException, Body, Response
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -111,6 +111,7 @@ def code_login(
     email: str = Body(...),
     code: str = Body(...),
     remember_me: bool = Body(default=True),
+    response: Response = None,
     db: Session = Depends(get_db),
 ):
     """邮箱验证码登录（验证码有效期内可登录）
@@ -155,6 +156,18 @@ def code_login(
     if user.role == "admin":
         set_admin_session(user.id, token)
 
+    # 设置 httpOnly Cookie（自动携带 Token，防 XSS 窃取）
+    max_age = 30 * 24 * 3600 if remember_me else settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60
+    response.set_cookie(
+        key="token",
+        value=token,
+        httponly=True,
+        secure=False,
+        samesite="lax",
+        max_age=max_age,
+        path="/",
+    )
+
     return TokenResponse(access_token=token, user=UserProfile.model_validate(user))
 
 
@@ -191,6 +204,7 @@ def admin_send_code(email: str = Body(..., embed=True)):
 def admin_login(
     email: str = Body(...),
     code: str = Body(...),
+    response: Response = None,
     db: Session = Depends(get_db),
 ):
     """管理员邮箱验证码登录（带频率限制）"""
@@ -217,4 +231,17 @@ def admin_login(
 
     token = create_access_token({"sub": str(user.id), "role": user.role})
     set_admin_session(user.id, token)
+
+    # 设置 httpOnly Cookie
+    max_age = settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60
+    response.set_cookie(
+        key="token",
+        value=token,
+        httponly=True,
+        secure=False,
+        samesite="lax",
+        max_age=max_age,
+        path="/",
+    )
+
     return TokenResponse(access_token=token, user=UserProfile.model_validate(user))

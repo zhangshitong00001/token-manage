@@ -100,6 +100,8 @@ def create_deepseek_payment(
     """创建 DeepSeek 充值二维码"""
     try:
         amount = data.get("amount", 10)
+        if not isinstance(amount, (int, float)) or amount < 1 or amount > 50:
+            raise HTTPException(status_code=400, detail="充值金额范围为 1~50 元")
         method = data.get("method", "WECHAT")  # WECHAT / ALIPAY
         result = _ds_pay.create_qr_payment(amount, method)
         return {"success": True, "data": result}

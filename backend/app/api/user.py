@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models import User
 from app.schemas import UserProfile, UserBindKey, UserModelPref
-from app.core.deps import get_current_user
+from app.core.deps import get_current_user, get_admin_user
 
 router = APIRouter(prefix="/api/user", tags=["用户"])
 
@@ -124,11 +124,9 @@ def _read_hermes_api_key() -> str:
 
 @router.get("/hermes-api-key")
 def get_hermes_api_key(
-    current_user: User = Depends(get_current_user),
+    admin: User = Depends(get_admin_user),
 ):
     """查询 Hermes Agent 当前使用的 DeepSeek API Key（默认脱敏，仅管理员）"""
-    if current_user.role != "admin":
-        raise HTTPException(status_code=403, detail="仅管理员可查看")
 
     key = _read_hermes_api_key()
     masked = key
@@ -141,11 +139,9 @@ def get_hermes_api_key(
 
 @router.post("/hermes-api-key/reveal")
 def reveal_hermes_api_key(
-    current_user: User = Depends(get_current_user),
+    admin: User = Depends(get_admin_user),
 ):
-    """获取完整 API Key（需管理员登录态确认，仅管理员）"""
-    if current_user.role != "admin":
-        raise HTTPException(status_code=403, detail="仅管理员可查看")
+    """获取完整 API Key（需管理员登录态确认）"""
 
     key = _read_hermes_api_key()
     if not key:

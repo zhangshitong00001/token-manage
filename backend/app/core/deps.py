@@ -1,5 +1,5 @@
 """FastAPI 依赖注入"""
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, status, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
 
@@ -12,14 +12,23 @@ bearer_scheme = HTTPBearer(auto_error=False)
 
 
 def get_current_user(
+    request: Request,
     credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme),
     db: Session = Depends(get_db),
 ) -> User:
-    """从JWT中获取当前用户"""
-    if credentials is None:
+    """从 JWT 获取当前用户（支持 Authorization header 或 httpOnly Cookie）"""
+    # 优先从 Authorization header 读取（兼容旧客户端）
+    token = None
+    if credentials is not None:
+        token = credentials.credentials
+    else:
+        # 回退到 httpOnly Cookie
+        token = request.cookies.get("token")
+
+    if not token:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="未登录")
     try:
-        payload = decode_access_token(credentials.credentials)
+        payload = decode_access_token(token)
         user_id = payload.get("sub")
         if user_id is None:
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="无效Token")

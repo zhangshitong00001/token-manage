@@ -47,6 +47,9 @@ class Settings(BaseSettings):
     DEEPSEEK_USER_TOKEN: str = ""  # 持久化的 DeepSeek 平台用户 Token（来自浏览器）
     DEEPSEEK_CF_CLEARANCE: str = ""  # 匹配 Token 的 cf_clearance cookie
 
+    # 内部 API Key（Hermes Agent 调用消耗记录接口）
+    USAGE_API_KEY: str = ""
+
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"

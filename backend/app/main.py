@@ -26,6 +26,7 @@ app = FastAPI(title="TokenManager API", version="1.0.0")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
+        "https://120.77.10.212",
         "http://120.77.10.212",
         "http://localhost:8000",
         "http://localhost:3001",

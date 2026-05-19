@@ -10,16 +10,17 @@ from app.models import User, TokenUsage
 from app.schemas import UsageRecord, UsageRecordResponse
 from app.core.deps import get_current_user
 from app.services.token_calc import calculate_cost
+from app.config import settings
 
 router = APIRouter(prefix="/api/usage", tags=["Token消耗"])
 
-# 内部 API Key（用于 Hermes agent 调用）
-USAGE_API_KEY = "hermes-internal-token-manager-key-2026"
-
 
 def verify_usage_api_key(x_api_key: Optional[str] = Header(None)):
-    """验证内部 API Key"""
-    if x_api_key != USAGE_API_KEY:
+    """验证内部 API Key（从 .env 读取）"""
+    expected = settings.USAGE_API_KEY
+    if not expected:
+        raise HTTPException(status_code=500, detail="服务端未配置 USAGE_API_KEY")
+    if x_api_key != expected:
         raise HTTPException(status_code=403, detail="无权访问")
 
 

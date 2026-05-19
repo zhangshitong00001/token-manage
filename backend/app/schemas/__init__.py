@@ -132,3 +132,18 @@ class TokenResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
     user: UserProfile
+
+
+# ---- 系统消耗同步（防随意写入）----
+
+class SystemUsageSync(BaseModel):
+    stats_date: str = ""
+    total_input_tokens: int = 0
+    total_output_tokens: int = 0
+    total_cache_read_tokens: int = 0
+    total_cache_write_tokens: int = 0
+    total_reasoning_tokens: int = 0
+    session_count: int = 0
+    api_call_count: int = 0
+    tool_call_count: int = 0
+    estimated_cost_usd: float = 0.0
