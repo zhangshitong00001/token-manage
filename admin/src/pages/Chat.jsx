@@ -46,10 +46,58 @@ export default function Chat() {
   const [loading, setLoading] = useState(false)
   const [streamingText, setStreamingText] = useState('')
   const [currentCost, setCurrentCost] = useState(null)
-  const [uploadedFiles, setUploadedFiles] = useState([]) // [{file_id, name, type, size}]
+  const [uploadedFiles, setUploadedFiles] = useState([])
   const [uploading, setUploading] = useState(false)
+  const [healthStatus, setHealthStatus] = useState('checking')
   const messagesEndRef = useRef(null)
   const fileInputRef = useRef(null)
+
+  const STORAGE_KEY = 'admin_chat_messages'
+
+  /** 从 localStorage 加载 */
+  const loadFromStorage = useCallback(() => {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY)
+      if (raw) {
+        const parsed = JSON.parse(raw)
+        if (Array.isArray(parsed)) setMessages(parsed)
+      }
+    } catch {}
+  }, [])
+
+  /** 保存到 localStorage */
+  const saveToStorage = useCallback((msgs) => {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(msgs))
+    } catch {}
+  }, [])
+
+  /** 加载历史 + 健康检查 */
+  useEffect(() => {
+    loadFromStorage()
+    const token = getToken()
+    if (token) {
+      fetch('/api/chat/history', {
+        headers: { 'Authorization': `Bearer ${token}` },
+      }).then(r => r.json()).then(data => {
+        if (data.messages && data.messages.length > 0) {
+          setMessages(data.messages)
+          saveToStorage(data.messages)
+        }
+      }).catch(() => {})
+      // 健康检查
+      const check = () => {
+        fetch('/api/chat/health', {
+          headers: { 'Authorization': `Bearer ${token}` },
+        }).then(r => r.json()).then(d => {
+          setHealthStatus(d.status === 'ok' ? 'ok' : 'degraded')
+        }).catch(() => setHealthStatus('down'))
+      }
+      check()
+      const timer = setInterval(check, 15000)
+      return () => clearInterval(timer)
+    }
+  }, [loadFromStorage])
 
   const scrollToBottom = useCallback(() => {
     setTimeout(() => {
@@ -178,10 +226,21 @@ export default function Chat() {
                   tokensOutput: data.tokens_output,
                   duration: data.duration_ms,
                 })
-                setMessages((prev) => [
-                  ...prev,
-                  { role: 'assistant', content: data.content },
-                ])
+                setMessages((prev) => {
+                  const next = [...prev, { role: 'assistant', content: data.content }]
+                  // 保存到 localStorage
+                  try { localStorage.setItem('admin_chat_messages', JSON.stringify(next)) } catch {}
+                  // 同步到后端
+                  const token = getToken()
+                  if (token) {
+                    fetch('/api/chat/history', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                      body: JSON.stringify({ messages: next }),
+                    }).catch(() => {})
+                  }
+                  return next
+                })
                 setStreamingText('')
                 break
               case 'error':
@@ -208,6 +267,7 @@ export default function Chat() {
     setStreamingText('')
     setCurrentCost(null)
     setUploadedFiles([])
+    saveToStorage([])
   }
 
   const handleKeyDown = (e) => {
@@ -232,6 +292,12 @@ export default function Chat() {
           <RobotOutlined style={{ fontSize: 20, color: '#1677ff' }} />
           <Text strong style={{ fontSize: 16 }}>Claude Code AI 助手</Text>
           <Tag color="blue">DeepSeek Flash</Tag>
+          <Tag
+            color={healthStatus === 'ok' ? 'green' : healthStatus === 'checking' ? 'orange' : 'red'}
+            style={{ fontSize: 11 }}
+          >
+            {healthStatus === 'ok' ? '● 在线' : healthStatus === 'checking' ? '◌ 检查中' : '○ 离线'}
+          </Tag>
           {currentCost && (
             <>
               <Tag icon={<DollarOutlined />} color="green">

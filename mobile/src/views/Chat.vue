@@ -4,16 +4,24 @@
     <div class="chat-header">
       <van-icon name="chat-o" size="20" color="#1989fa" />
       <span class="chat-title">AI 助手</span>
+      <!-- 状态指示灯 -->
+      <span
+        :class="['status-dot', `status-${healthStatus}`]"
+        :title="healthHint"
+      />
       <van-tag plain color="#1989fa" size="small">DeepSeek Flash</van-tag>
       <van-tag v-if="lastCost" plain color="#07c160" size="small" style="margin-right:4px">
         ${{ lastCost.toFixed(6) }}
       </van-tag>
-      <van-icon
-        name="delete-o"
-        size="18"
-        style="margin-left: auto; padding: 4px"
-        @click="clearChat"
-      />
+      <div style="margin-left: auto; display: flex; gap: 8px; align-items: center">
+        <van-icon
+          name="add-square"
+          size="18"
+          color="#666"
+          title="新对话"
+          @click="newChat"
+        />
+      </div>
     </div>
 
     <!-- 消息列表 -->
@@ -129,8 +137,8 @@
 </template>
 
 <script setup>
-import { ref, nextTick, watch } from 'vue'
-import { showToast, showLoadingToast, closeToast } from 'vant'
+import { ref, nextTick, watch, onMounted, onUnmounted } from 'vue'
+import { showToast, showConfirmDialog } from 'vant'
 import { useRouter } from 'vue-router'
 
 const router = useRouter()
@@ -145,6 +153,15 @@ const messagesRef = ref(null)
 const scrollEnd = ref(null)
 const fileInputRef = ref(null)
 
+// ── 状态指示 ──
+const healthStatus = ref('checking') // 'checking' | 'ok' | 'degraded' | 'down'
+const healthHint = ref('检查中...')
+let healthTimer = null
+
+// ── 持久化 Key ──
+const STORAGE_KEY = 'hermes_chat_messages'
+const HEALTH_POLL_MS = 15000  // 15秒轮询
+
 const BASE_URL = ''
 
 const exampleQuestions = [
@@ -157,6 +174,133 @@ const exampleQuestions = [
 function getToken() {
   return localStorage.getItem('token') || ''
 }
+
+// ── 健康检查 ──
+async function checkHealth() {
+  const token = getToken()
+  if (!token) {
+    healthStatus.value = 'down'
+    healthHint.value = '未登录'
+    return
+  }
+  try {
+    const res = await fetch(`${BASE_URL}/api/chat/health`, {
+      headers: { 'Authorization': `Bearer ${token}` },
+    })
+    if (!res.ok) throw new Error(`HTTP ${res.status}`)
+    const data = await res.json()
+    if (data.status === 'ok') {
+      healthStatus.value = 'ok'
+      healthHint.value = 'AI 助手在线'
+    } else {
+      healthStatus.value = 'degraded'
+      healthHint.value = 'AI 助手异常: ' + (data.error || '')
+    }
+  } catch {
+    healthStatus.value = 'down'
+    healthHint.value = '后台不可用'
+  }
+}
+
+function startHealthPoll() {
+  checkHealth()
+  healthTimer = setInterval(checkHealth, HEALTH_POLL_MS)
+}
+
+function stopHealthPoll() {
+  if (healthTimer) {
+    clearInterval(healthTimer)
+    healthTimer = null
+  }
+}
+
+// ── localStorage 持久化 ──
+function loadFromStorage() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY)
+    if (raw) {
+      const parsed = JSON.parse(raw)
+      if (Array.isArray(parsed)) {
+        messages.value = parsed
+      }
+    }
+  } catch {
+    // ignore
+  }
+}
+
+function saveToStorage() {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(messages.value))
+  } catch {
+    // localStorage 满时忽略
+  }
+}
+
+// ── 后端同步 ──
+let saveDebounceTimer = null
+
+function syncToBackend() {
+  if (saveDebounceTimer) clearTimeout(saveDebounceTimer)
+  saveDebounceTimer = setTimeout(async () => {
+    const token = getToken()
+    if (!token || messages.value.length === 0) return
+    try {
+      await fetch(`${BASE_URL}/api/chat/history`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify({ messages: messages.value }),
+      })
+    } catch {
+      // 后端同步失败不影响前端使用
+    }
+  }, 1000)
+}
+
+async function loadFromBackend() {
+  const token = getToken()
+  if (!token) return
+  try {
+    const res = await fetch(`${BASE_URL}/api/chat/history`, {
+      headers: { 'Authorization': `Bearer ${token}` },
+    })
+    if (!res.ok) return
+    const data = await res.json()
+    if (data.messages && data.messages.length > 0) {
+      // 以后端数据为准，覆盖 localStorage
+      messages.value = data.messages
+      saveToStorage()
+    }
+  } catch {
+    // ignore — localStorage 兜底
+  }
+}
+
+// ── 生命周期 ──
+onMounted(async () => {
+  // 1) 快速从 localStorage 恢复（即时显示）
+  loadFromStorage()
+  // 2) 从后端同步（覆盖更新）
+  await loadFromBackend()
+  // 3) 开始健康检查
+  startHealthPoll()
+})
+
+onUnmounted(() => {
+  stopHealthPoll()
+  if (saveDebounceTimer) clearTimeout(saveDebounceTimer)
+  // 离开时保存
+  saveToStorage()
+})
+
+// 消息变化时自动保存
+watch(messages, () => {
+  saveToStorage()
+  syncToBackend()
+}, { deep: true })
 
 function renderContent(text) {
   if (!text) return ''
@@ -232,6 +376,25 @@ function fmtSize(bytes) {
   return `${(bytes / 1024 / 1024).toFixed(1)}MB`
 }
 
+function newChat() {
+  showConfirmDialog({
+    title: '新对话',
+    message: '清空当前对话并开始新对话？历史记录已自动保存。',
+    confirmButtonText: '确定',
+    cancelButtonText: '取消',
+  }).then(() => {
+    messages.value = []
+    streaming.value = ''
+    lastCost.value = 0
+    input.value = ''
+    uploadedFiles.value = []
+    saveToStorage()
+    syncToBackend()
+  }).catch(() => {
+    // 取消
+  })
+}
+
 async function sendMessage(text) {
   if (!text?.trim() || loading.value) return
   const msgText = text
@@ -294,7 +457,6 @@ async function sendMessage(text) {
               lastCost.value = data.cost || 0
               messages.value.push({ role: 'assistant', content: data.content })
               streaming.value = ''
-              // 发送完后不清除文件
               break
             case 'error':
               streaming.value = (streaming.value || '') + `\n\n⚠️ ${data.message}`
@@ -311,13 +473,6 @@ async function sendMessage(text) {
     loading.value = false
     streaming.value = ''
   }
-}
-
-function clearChat() {
-  messages.value = []
-  streaming.value = ''
-  lastCost.value = 0
-  uploadedFiles.value = []
 }
 </script>
 
@@ -455,5 +610,32 @@ function clearChat() {
 .chat-input-row :deep(.van-field) {
   flex: 1;
   padding: 0;
+}
+
+/* 状态指示灯 */
+.status-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  transition: background 0.3s;
+}
+.status-checking {
+  background: #ff9800;
+  animation: pulse 1s infinite;
+}
+.status-ok {
+  background: #07c160;
+}
+.status-degraded {
+  background: #ff9800;
+}
+.status-down {
+  background: #ee0a24;
+}
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
 }
 </style>

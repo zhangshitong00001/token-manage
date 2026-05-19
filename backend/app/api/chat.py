@@ -3,13 +3,15 @@
 import asyncio
 import json
 import os
+import subprocess
 import time
 
 from fastapi import APIRouter, Depends, HTTPException
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, JSONResponse
 from pydantic import BaseModel
 
 from app.core.deps import get_current_user
+from app.models.chat_history import save_chat_message, load_chat_history, save_conversation
 
 router = APIRouter(prefix="/api/chat", tags=["AI聊天"])
 
@@ -24,6 +26,11 @@ CLAUDE_BIN = "/usr/bin/claude"
 class ChatRequest(BaseModel):
     message: str
     history: list[dict] | None = None
+
+
+class SaveHistoryRequest(BaseModel):
+    messages: list[dict]
+    """[{role: 'user'|'assistant', content: '...'}, ...]"""
 
 
 def build_prompt(message: str, history: list[dict] | None) -> str:
@@ -200,3 +207,44 @@ async def chat_stream(
             "Content-Type": "text/event-stream; charset=utf-8",
         },
     )
+
+
+@router.get("/health")
+async def chat_health(user=Depends(get_current_user)):
+    """健康检查 — 检测后台是否在线"""
+    try:
+        result = subprocess.run(
+            [CLAUDE_BIN, "--bare", "-p", "echo ok", "--output-format", "stream-json"],
+            capture_output=True,
+            text=True,
+            timeout=30,
+            env=CLAUDE_ENV,
+        )
+        ok = "ok" in result.stdout.lower() or result.returncode == 0
+        return JSONResponse({
+            "status": "ok" if ok else "degraded",
+            "claude": ok,
+            "error": result.stderr[:200] if not ok else None,
+        })
+    except FileNotFoundError:
+        return JSONResponse({"status": "down", "claude": False, "error": "claude 命令不存在"})
+    except subprocess.TimeoutExpired:
+        return JSONResponse({"status": "down", "claude": False, "error": "claude 响应超时"})
+    except Exception as e:
+        return JSONResponse({"status": "down", "claude": False, "error": str(e)[:100]})
+
+
+@router.get("/history")
+async def get_history(user=Depends(get_current_user)):
+    """获取当前用户的对话历史"""
+    messages = load_chat_history(user_id=user.id)
+    return {"messages": messages}
+
+
+@router.post("/history")
+async def save_history(req: SaveHistoryRequest, user=Depends(get_current_user)):
+    """保存当前用户的对话历史"""
+    if not req.messages:
+        return {"saved": 0}
+    save_conversation(user_id=user.id, messages=req.messages, conversation_id=0)
+    return {"saved": len(req.messages)}
