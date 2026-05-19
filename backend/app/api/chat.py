@@ -108,10 +108,29 @@ async def chat_stream(
                         bt = block.get("type")
                         if bt == "text":
                             text = block["text"]
-                            chunk = text[len(collected_text):]
-                            if chunk:
+                            new_text = text[len(collected_text):]
+                            if new_text:
                                 collected_text = text
-                                yield f"data: {json.dumps({'type': 'text', 'content': chunk})}\n\n"
+                                # 拆分成小块模拟流式输出（逐字效果）
+                                pieces = []
+                                # 先按句子/换行拆分
+                                import re as _re
+                                for sentence in _re.split(r'(?<=[。！？.!?\n])', new_text):
+                                    if not sentence:
+                                        continue
+                                    # 再拆成3-5字符小块模拟流式
+                                    if len(sentence) > 10:
+                                        step = max(1, min(5, len(sentence) // 3))
+                                        for i in range(0, len(sentence), step):
+                                            sub = sentence[i:i+step]
+                                            if sub:
+                                                pieces.append(sub)
+                                    else:
+                                        pieces.append(sentence)
+                                # 推送小块
+                                for piece in pieces:
+                                    yield f"data: {json.dumps({'type': 'text', 'content': piece})}\n\n"
+                                    await asyncio.sleep(0.015)
                         elif bt == "tool_use":
                             current_tool_name = block.get("name", "")
                             yield f"data: {json.dumps({'type': 'tool_use', 'name': current_tool_name, 'input': block.get('input', {})})}\n\n"
