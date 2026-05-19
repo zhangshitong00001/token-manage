@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>跨境物流业务系统 - 原型</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+tailwind.config={theme:{extend:{colors:{primary:{50:'#eff6ff',100:'#dbeafe',200:'#bfdbfe',300:'#93c5fd',400:'#60a5fa',500:'#3b82f6',600:'#2563eb',700:'#1d4ed8'},success:{50:'#f0fdf4',400:'#4ade80',500:'#22c55e',600:'#16a34a'},warning:{50:'#fffbeb',400:'#fbbf24',500:'#f59e0b'},danger:{50:'#fef2f2',400:'#f87171',500:'#ef4444'}}}}}
+</script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;height:100%;-webkit-font-smoothing:antialiased}
+.page{display:none;height:100%}
+.page.active{display:flex}
+.sidebar-item{cursor:pointer;transition:all .15s;position:relative}
+.sidebar-item:hover{background:#eef2ff}
+.sidebar-item.active{background:#eef2ff;color:#2563eb;font-weight:600}
+.sidebar-item.active::before{content:'';position:absolute;left:0;top:8px;bottom:8px;width:3px;background:#3b82f6;border-radius:0 3px 3px 0}
+.tab-content{display:none}
+.tab-content.active{display:block}
+.sub-tab{display:none}
+.sub-tab.active{display:block}
+@keyframes fadeIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+.fade-in{animation:fadeIn .25s ease-out}
+.badge{display:inline-block;padding:2px 10px;border-radius:999px;font-size:11px;font-weight:500}
+table{width:100%;border-collapse:collapse}
+th{text-align:left;padding:10px 14px;font-size:11px;color:#6b7280;font-weight:600;border-bottom:1px solid #e5e7eb;text-transform:uppercase;letter-spacing:.5px}
+td{padding:10px 14px;font-size:13px;border-bottom:1px solid #f3f4f6}
+tr:hover td{background:#f9fafb}
+.huProgress{height:6px;background:#e5e7eb;border-radius:99px;overflow:hidden}
+.huProgressFill{height:100%;border-radius:99px;transition:width .5s}
+.modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:50;align-items:center;justify-content:center;backdrop-filter:blur(2px)}
+.modal-overlay.show{display:flex}
+.modal-body{background:#fff;border-radius:16px;padding:24px;width:500px;max-width:92vw;max-height:85vh;overflow-y:auto;box-shadow:0 25px 60px rgba(0,0,0,.25)}
+input,select,textarea{border:1px solid #d1d5db;border-radius:8px;padding:8px 12px;font-size:13px;outline:none;width:100%}
+input:focus,select:focus,textarea:focus{border-color:#3b82f6;box-shadow:0 0 0 3px rgba(59,130,246,.12)}
+.timeline-dot{width:12px;height:12px;border-radius:50%;flex-shrink:0;margin-top:3px}
+.detail-card{background:#fff;border:1px solid #f0f0f0;border-radius:12px;padding:16px;transition:all .15s}
+.detail-card:hover{box-shadow:0 2px 12px rgba(0,0,0,.06);border-color:#e5e7eb}
+.lg-sidebar{width:220px;min-width:220px;background:#fff;border-right:1px solid #e5e7eb;display:flex;flex-direction:column}
+@media(max-width:768px){.lg-sidebar{width:56px;min-width:56px}.lg-sidebar span.sidebar-text{display:none}.lg-sidebar .sidebar-item{padding:10px 16px;justify-content:center}}
+</style>
+</head>
+<body class="h-full bg-gray-50">
+
+<!-- ========== LOGIN PAGE ========== -->
+<div class="page active" id="page-login">
+  <div class="min-h-screen w-full bg-gradient-to-br from-blue-600 via-blue-700 to-indigo-900 flex items-center justify-center p-4">
+    <div class="w-full max-w-sm bg-white rounded-2xl p-8 shadow-2xl fade-in">
+      <div class="text-center mb-8">
+        <div class="w-14 h-14 rounded-2xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white text-2xl mx-auto mb-3 shadow-lg shadow-blue-200">📦</div>
+        <h1 class="text-xl font-bold text-gray-800">跨境物流业务系统</h1>
+        <p class="text-sm text-gray-400 mt-1">China-Kazakhstan Logistics Platform</p>
+      </div>
+      <div class="space-y-4">
+        <div><label class="text-sm text-gray-500 mb-1.5 block">邮箱账号</label><input type="email" class="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-100 outline-none" placeholder="请输入邮箱" value="admin@logistics.com"></div>
+        <div>
+          <div class="flex items-center justify-between mb-1.5"><label class="text-sm text-gray-500">验证码</label><button class="text-xs text-blue-600 font-medium bg-blue-50 px-3 py-1.5 rounded-lg hover:bg-blue-100">获取验证码</button></div>
+          <input type="text" class="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-100 outline-none" placeholder="6位验证码" maxlength="6">
+        </div>
+        <button class="w-full bg-gradient-to-r from-blue-600 to-indigo-600 text-white py-3.5 rounded-xl font-semibold text-base hover:from-blue-700 hover:to-indigo-700 transition-all mt-2 shadow-lg shadow-blue-200/50" onclick="showPage('main')">登 录</button>
+        <p class="text-xs text-center text-gray-400 mt-4">点击登录进入系统 · 演示原型</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ========== MAIN PAGE ========== -->
+<div class="page" id="page-main">
+  <!-- Left Sidebar -->
+  <div class="lg-sidebar overflow-y-auto">
+    <div class="p-4 border-b border-gray-100 flex items-center gap-3">
+      <div class="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white text-xs font-bold shrink-0">K</div>
+      <div class="sidebar-text"><div class="font-bold text-sm">跨境物流系统</div><div class="text-[10px] text-gray-400">管理后台 v1.0</div></div>
+    </div>
+    <div class="flex-1 py-2 space-y-0.5" id="sidebarMenu"></div>
+  </div>
+
+  <!-- Right Content -->
+  <div class="flex-1 flex flex-col overflow-hidden">
+    <!-- Top Bar -->
+    <div class="h-14 bg-white border-b border-gray-200 flex items-center justify-between px-5 shrink-0">
+      <div class="flex items-center gap-3">
+        <h1 class="text-sm font-semibold text-gray-800" id="pageTitle">系统首页</h1>
+        <span class="badge bg-blue-50 text-blue-600 text-[10px]">演示环境</span>
+      </div>
+      <div class="flex items-center gap-3 text-[13px] text-gray-500">
+        <span class="hidden sm:inline">2026-05-19 周一</span>
+        <span class="w-7 h-7 rounded-full bg-gradient-to-br from-blue-400 to-indigo-500 flex items-center justify-center text-white text-[11px] font-medium shadow-sm">管</span>
+      </div>
+    </div>
+    <!-- Content -->
+    <div class="flex-1 overflow-y-auto p-5 bg-gray-50" id="contentArea"></div>
+  </div>
+</div>
+
+<!-- ========== MODAL ========== -->
+<div class="modal-overlay" id="modalOverlay" onclick="if(event.target===this)closeModal()">
+  <div class="modal-body fade-in" id="modalContent"></div>
+</div>
+
+<script>
+// ============ MODULES DEFINITION ============
+const modules = [
+  { id:'dashboard',      label:'系统首页',     icon:'📊', group:'核心视图' },
+  { id:'warehouse',      label:'云仓集货管理',   icon:'📦', group:'业务流程' },
+  { id:'sorting',        label:'阿拉木图分装',   icon:'📋', group:'业务流程' },
+  { id:'documents',      label:'文件生成管理',   icon:'📄', group:'业务流程' },
+  { id:'transport',      label:'装车运输管理',   icon:'🚛', group:'业务流程' },
+  { id:'customs-cn',     label:'出口报关',      icon:'🏛️', group:'业务流程' },
+  { id:'customs-kz',     label:'进口清关',      icon:'🏛️', group:'业务流程' },
+  { id:'port-transport', label:'口岸运输管理',   icon:'🚚', group:'业务流程' },
+  { id:'warehouse-kz',   label:'仓库分拣管理',   icon:'📦', group:'业务流程' },
+  { id:'delivery',       label:'收件点配送',    icon:'🚴', group:'业务流程' },
+  { id:'signin',         label:'签收入库管理',   icon:'✍️', group:'业务流程' },
+  { id:'reconciliation', label:'对账管理',      icon:'💰', group:'财务管理' },
+  { id:'settlement',     label:'资金结算',      icon:'💵', group:'财务管理' },
+  { id:'invoice',        label:'支付开票',      icon:'📜', group:'财务管理' },
+  { id:'tracking',       label:'物流状态追踪',   icon:'🔍', group:'核心功能' },
+  { id:'permissions',    label:'权限管理',      icon:'🔐', group:'核心功能' },
+  { id:'stats',          label:'统计分析',      icon:'📈', group:'核心功能' },
+  { id:'alerts',         label:'异常预警中心',   icon:'⚠️', group:'核心功能' },
+  { id:'billing',        label:'计费规则配置',   icon:'⚙️', group:'核心功能' },
+];
+
+// ============ NAVIGATION ============
+function showPage(id) {
+  document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+  document.getElementById('page-'+id).classList.add('active');
+}
+function navigate(id) {
+  document.querySelectorAll('.sidebar-item').forEach(el=>el.classList.remove('active'));
+  const item = document.querySelector(`[data-module="${id}"]`);
+  if(item) item.classList.add('active');
+  const mod = modules.find(m=>m.id===id);
+  document.getElementById('pageTitle').textContent = mod ? mod.label : '系统首页';
+  const area = document.getElementById('contentArea');
+  area.innerHTML = (renderers[id]||renderers.dashboard)() + '<div class="h-8"></div>';
+}
+
+function openModal(html) {
+  document.getElementById('modalContent').innerHTML = html;
+  document.getElementById('modalOverlay').classList.add('show');
+}
+function closeModal() {
+  document.getElementById('modalOverlay').classList.remove('show');
+}
+
+// ============ SIDEBAR ============
+function buildSidebar() {
+  const menu = document.getElementById('sidebarMenu');
+  const groups = {};
+  modules.forEach(m => { if(!groups[m.group]) groups[m.group]=[]; groups[m.group].push(m); });
+  Object.entries(groups).forEach(([g,items]) => {
+    const gDiv = document.createElement('div');
+    gDiv.innerHTML = `<div class="px-4 pt-3 pb-1 text-[10px] text-gray-400 font-semibold uppercase tracking-wider sidebar-text">${g}</div>`;
+    items.forEach(m => {
+      const d = document.createElement('div');
+      d.setAttribute('data-module',m.id);
+      d.className = 'sidebar-item flex items-center gap-2.5 px-4 py-2 text-sm text-gray-600 ' + (m.id==='dashboard'?'active':'');
+      d.innerHTML = `<span class="text-base">${m.icon}</span><span class="sidebar-text">${m.label}</span>`;
+      d.onclick = ()=>navigate(m.id);
+      gDiv.appendChild(d);
+    });
+    menu.appendChild(gDiv);
+  });
+}
+
+// ============ RENDERERS ============
+const renderers = {};
+
+renderers.dashboard = () => `
+<div class="fade-in max-w-5xl">
+  <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-5">
+    <div class="detail-card"><div class="flex items-center justify-between"><div class="text-xs text-gray-400 font-medium">今日集货量</div><span class="text-lg">📦</span></div><div class="text-2xl font-bold mt-1">12,580 <span class="text-sm font-normal text-gray-400">kg</span></div><div class="text-xs text-green-500 mt-1 flex items-center gap-1">↑ 8.3% <span class="text-gray-400 font-normal">较昨日</span></div></div>
+    <div class="detail-card"><div class="flex items-center justify-between"><div class="text-xs text-gray-400 font-medium">在途包裹</div><span class="text-lg">🚛</span></div><div class="text-2xl font-bold mt-1">3,426</div><div class="text-xs text-blue-500 mt-1">覆盖 408 个收件点</div></div>
+    <div class="detail-card"><div class="flex items-center justify-between"><div class="text-xs text-gray-400 font-medium">待签收</div><span class="text-lg">✍️</span></div><div class="text-2xl font-bold mt-1">847</div><div class="text-xs text-orange-500 mt-1">今日配送中</div></div>
+    <div class="detail-card"><div class="flex items-center justify-between"><div class="text-xs text-gray-400 font-medium">对账差异</div><span class="text-lg">⚠️</span></div><div class="text-2xl font-bold mt-1 text-red-500">12</div><div class="text-xs text-red-500 mt-1 cursor-pointer" onclick="navigate('alerts')">查看详情 →</div></div>
+  </div>
+  <div class="grid md:grid-cols-3 gap-4 mb-5">
+    <div class="detail-card md:col-span-2">
+      <div class="flex items-center justify-between mb-4"><h3 class="font-semibold text-sm">物流全程实时状态</h3><span class="text-xs text-blue-600 cursor-pointer" onclick="navigate('tracking')">查看全部 →</span></div>
+      <div class="grid grid-cols-6 gap-2 text-center">
+        <div><div class="huProgress mb-1.5"><div class="huProgressFill bg-green-500" style="width:100%"></div></div><span class="text-[11px] text-gray-700 font-medium">📦集货</span><span class="block text-[10px] text-gray-400">2,180kg</span></div>
+        <div><div class="huProgress mb-1.5"><div class="huProgressFill bg-blue-500" style="width:85%"></div></div><span class="text-[11px] text-gray-700 font-medium">🚛运输</span><span class="block text-[10px] text-gray-400">846件</span></div>
+        <div><div class="huProgress mb-1.5"><div class="huProgressFill bg-yellow-400" style="width:60%"></div></div><span class="text-[11px] text-gray-700 font-medium">🏛️报关</span><span class="block text-[10px] text-gray-400">320件</span></div>
+        <div><div class="huProgress mb-1.5"><div class="huProgressFill bg-purple-500" style="width:55%"></div></div><span class="text-[11px] text-gray-700 font-medium">🏛️清关</span><span class="block text-[10px] text-gray-400">560件</span></div>
+        <div><div class="huProgress mb-1.5"><div class="huProgressFill bg-indigo-500" style="width:70%"></div></div><span class="text-[11px] text-gray-700 font-medium">🚴配送</span><span class="block text-[10px] text-gray-400">847件</span></div>
+        <div><div class="huProgress mb-1.5"><div class="huProgressFill bg-green-400" style="width:45%"></div></div><span class="text-[11px] text-gray-700 font-medium">✍️签收</span><span class="block text-[10px] text-gray-400">1,520件</span></div>
+      </div>
+    </div>
+    <div class="detail-card">
+      <h3 class="font-semibold text-sm mb-3">📋 待办事项 <span class="text-xs text-gray-400 font-normal">(6项)</span></h3>
+      <div class="space-y-2">
+        <div class="flex items-center gap-2 p-2.5 bg-red-50 rounded-lg text-[13px] cursor-pointer hover:bg-red-100"><span>🔴</span><span>3 笔报关材料缺失需补充</span></div>
+        <div class="flex items-center gap-2 p-2.5 bg-yellow-50 rounded-lg text-[13px] cursor-pointer"><span>🟡</span><span>12 笔对账差异待处理</span></div>
+        <div class="flex items-center gap-2 p-2.5 bg-blue-50 rounded-lg text-[13px] cursor-pointer"><span>🔵</span><span>5 批货物需确认集货</span></div>
+        <div class="flex items-center gap-2 p-2.5 bg-green-50 rounded-lg text-[13px] cursor-pointer"><span>🟢</span><span>2 笔结算单待审核</span></div>
+      </div>
+    </div>
+  </div>
+  <div class="detail-card">
+    <div class="flex items-center justify-between mb-3"><h3 class="font-semibold text-sm">📦 批次追踪 · 最新动态</h3><span class="text-xs text-blue-600 cursor-pointer">全部批次 →</span></div>
+    <div class="overflow-x-auto"><table><tr><th>批次号</th><th>当前环节</th><th>货物</th><th>重量</th><th>更新时间</th><th>状态</th></tr>
+    <tr><td class="font-medium">B-20260519-001</td><td>🚛 运输中</td><td>电子产品</td><td>520 kg</td><td>10:32</td><td><span class="badge bg-blue-50 text-blue-600">正常</span></td></tr>
+    <tr><td class="font-medium">B-20260519-002</td><td>🏛️ 报关审核</td><td>服装鞋帽</td><td>1,280 kg</td><td>09:15</td><td><span class="badge bg-yellow-50 text-yellow-600">待补充材料</span></td></tr>
+    <tr><td class="font-medium">B-20260518-015</td><td>📦 仓库分拣</td><td>日用百货</td><td>860 kg</td><td>昨日</td><td><span class="badge bg-green-50 text-green-600">正常</span></td></tr>
+    <tr><td class="font-medium">B-20260518-008</td><td>✍️ 已签收</td><td>食品饮料</td><td>340 kg</td><td>昨日</td><td><span class="badge bg-success-50 text-success-600">已完成</span></td></tr></table></div>
+  </div>
+</div>`;
+
+renderers.warehouse = () => `
+<div class="fade-in max-w-5xl">
+  <div class="flex items-center justify-between mb-4"><h2 class="text-lg font-semibold">📦 云仓集货管理</h2><button class="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 shadow-sm" onclick="openModal(modalWarehouseReceive())">+ 收货登记</button></div>
+  <div class="grid grid-cols-4 gap-4 mb-4">
+    <div class="detail-card"><div class="text-xs text-gray-400">集货库存</div><div class="text-xl font-bold mt-0.5">4,280<span class="text-sm font-normal text-gray-400"> kg</span></div></div>
+    <div class="detail-card"><div class="text-xs text-gray-400">待确认集货</div><div class="text-xl font-bold mt-0.5">5 <span class="text-sm font-normal text-gray-400">批次</span></div></div>
+    <div class="detail-card"><div class="text-xs text-gray-400">今日收货</div><div class="text-xl font-bold mt-0.5 text-blue-600">12 <span class="text-sm font-normal text-gray-400">批次</span></div></div>
+    <div class="detail-card"><div class="text-xs text-gray-400">缺货预警</div><div class="text-xl font-bold mt-0.5 text-red-500">2 <span class="text-sm font-normal text-gray-400">批次</span></div><div class="text-xs text-red-500 mt-0.5">⚠️ B-0518-015 / B-0518-020</div></div>
+  </div>
+  <div class="detail-card p-0 overflow-hidden">
+    <div class="flex items-center gap-2 p-3 border-b border-gray-100 bg-gray-50/50"><input type="text" placeholder="搜索批次号/品名/SKU..." class="max-w-xs"><select class="max-w-[130px]"><option>全部状态</option></select><select class="max-w-[130px]"><option>全部货主</option></select></div>
+    <div class="overflow-x-auto"><table><tr><th>批次号</th><th>品名</th><th>SKU</th><th>数量</th><th>重量</th><th>货主</th><th>状态</th><th>操作</th></tr>
+    <tr><td class="font-medium">B-20260519-001</td><td>电子产品</td><td>SKU-8842</td><td>200 箱</td><td>520 kg</td><td>深圳科技</td><td><span class="badge bg-green-50 text-green-600">集货中</span></td><td class="text-blue-600 cursor-pointer">确认</td></tr>
+    <tr><td class="font-medium">B-20260519-002</td><td>服装鞋帽</td><td>SKU-6621</td><td>580 箱</td><td>1,280 kg</td><td>广州贸易</td><td><span class="badge bg-blue-50 text-blue-600">待收货</span></td><td class="text-blue-600 cursor-pointer">收货</td></tr>
+    <tr><td class="font-medium">B-20260518-015</td><td>日用百货</td><td>SKU-3318</td><td>320 箱</td><td>860 kg</td><td>义乌商贸</td><td><span class="badge bg-yellow-50 text-yellow-600">⚠️ 缺货</span></td><td class="text-blue-600 cursor-pointer">补货</td></tr>
+    <tr><td class="font-medium">B-20260518-008</td><td>食品饮料</td><td>SKU-2291</td><td>150 箱</td><td>340 kg</td><td>青岛食品</td><td><span class="badge bg-green-50 text-green-600">已完成</span></td><td class="text-blue-600 cursor-pointer">查看</td></tr></table></div>
+  </div>
+</div>`;
+
+renderers.sorting = () => `
+<div class="fade-in max-w-5xl">
+  <div class="flex items-center justify-between mb-4"><h2 class="text-lg font-semibold">📋 阿拉木图收件点分装管理（408个）</h2><div class="flex gap-2"><button class="border border-gray-200 px-3 py-2 rounded-lg text-sm hover:bg-gray-50">收件点列表</button><button class="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700" onclick="openModal(modalSorting())">+ 分装任务</button></div></div>
+  <div class="grid grid-cols-4 gap-4 mb-4">
+    <div class="detail-card"><div class="text-xs text-gray-400">收件点总数</div><div class="text-xl font-bold mt-0.5">408</div></div>
+    <div class="detail-card"><div class="text-xs text-gray-400">今日分装任务</div><div class="text-xl font-bold mt-0.5">86</div></div>
+    <div class="detail-card"><div class="text-xs text-gray-400">已完成</div><div class="text-xl font-bold mt-0.5 text-green-600">52</div><div class="text-xs text-green-500 mt-0.5">进度 60.5%</div></div>
+    <div class="detail-card"><div class="text-xs text-gray-400">异常件</div><div class="text-xl font-bold mt-0.5 text-red-500">3</div><div class="text-xs text-red-500 mt-0.5">需处理</div></div>
+  </div>
+  <div class="detail-card p-0 overflow-hidden">
+    <div class="flex items-center gap-2 p-3 border-b border-gray-100 bg-gray-50/50"><input type="text" placeholder="搜索收件点编号/名称..." class="max-w-xs"><select class="max-w-[140px]"><option>全部状态</option></select></div>
+    <div class="overflow-x-auto"><table><tr><th>编号</th><th>收件点名称</th><th>地址</th><th>批次</th><th>包裹数</th><th>负责人</th><th>进度</th></tr>
+    <tr><td class="font-medium">P-0001</td><td>阿拉木图1号店</td><td>Abay Ave 12</td><td>B-0519-001</td><td>24</td><td>张三</td><td><div class="w-24 huProgress"><div class="huProgressFill bg-green-500" style="width:100%"></div></div></td></tr>
+    <tr><td class="font-medium">P-0042</td><td>友谊路分店</td><td>Dostyk Ave 88</td><td>B-0519-001</td><td>18</td><td>李四</td><td><div class="w-24 huProgress"><div class="huProgressFill bg-green-500" style="width:75%"></div></div></td></tr>
+    <tr><td class="font-medium">P-0088</td><td>绿色市场店</td><td>Zheltoksan 45</td><td>B-0519-002</td><td>31</td><td>张三</td><td><div class="w-24 huProgress"><div class="huProgressFill bg-yellow-400" style="width:50%"></div></div></td></tr>
+    <tr><td class="font-medium">P-0156</td><td>独立广场店</td><td>Republic Sq 7</td><td>B-0518-015</td><td>12</td><td>王五</td><td><div class="w-24 huProgress"><div class="huProgressFill bg-green-500" style="width:66%"></div></div></td></tr></table></div>
+  </div>
+</div>`;
+
+renderers.documents = () => `
+<div class="fade-in max-w-5xl">
+  <div class="flex items-center justify-between mb-4"><h2 class="text-lg font-semibold">📄 文件生成管理</h2><button class="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700" onclick="openModal(modalDocGen())">+ 生成文件</button></div>
+  <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+    <div class="detail-card cursor-pointer hover:shadow" onclick="openModal(modalDocPreview())"><div class="text-sm font-medium mb-0.5">📄 装车清单</div><div class="text-xs text-gray-400">B-0519-001 · v2.1</div><div class="text-xs text-green-500 mt-1">已生成</div></div>
+    <div class="detail-card cursor-pointer hover:shadow" onclick="openModal(modalDocPreview())"><div class="text-sm font-medium mb-0.5">📄 商业发票</div><div class="text-xs text-gray-400">B-0519-001 · v1.0</div><div class="text-xs text-green-500 mt-1">已生成</div></div>
+    <div class="detail-card cursor-pointer hover:shadow" onclick="openModal(modalDocPreview())"><div class="text-sm font-medium mb-0.5">📄 装箱单</div><div class="text-xs text-gray-400">B-0519-002 · v3.2</div><div class="text-xs text-green-500 mt-1">已生成</div></div>
+    <div class="detail-card cursor-pointer hover:shadow" onclick="openModal(modalDocPreview())"><div class="text-sm font-medium mb-0.5">📄 原产地证明</div><div class="text-xs text-gray-400">B-0519-002 · v1.0</div><div class="text-xs text-yellow-500 mt-1">待生成</div></div>
+  </div>
+  <div class="detail-card"><h3 class="font-semibold text-sm mb-3">文件记录</h3><div class="overflow-x-auto"><table><tr><th>文件名称</th><th>类型</th><th>批次</th><th>版本</th><th>生成时间</th><th>操作</th></tr>
+  <tr><td class="font-medium">装车清单_B-0519-001</td><td>装车文件</td><td>B-20260519-001</td><td>v2.1</td><td>10:15</td><td class="flex gap-2"><span class="text-blue-600 cursor-pointer">预览</span><span class="text-blue-600 cursor-pointer">导出</span><span class="text-blue-600 cursor-pointer">历史</span></td></tr>
+  <tr><td class="font-medium">商业发票_B-0519-001</td><td>报关文件</td><td>B-20260519-001</td><td>v1.0</td><td>09:30</td><td class="flex gap-2"><span class="text-blue-600 cursor-pointer">预览</span><span class="text-blue-600 cursor-pointer">导出</span><span class="text-blue-600 cursor-pointer">历史</span></td></tr>
+  <tr><td class="font-medium">装箱单_B-0519-002</td><td>报关文件</td><td>B-20260519-002</td><td>v3.2</td><td>昨日</td><td class="flex gap-2"><span class="text-blue-600 cursor-pointer">预览</span><span class="text-blue-600 cursor-pointer">导出</span><span class="text-blue-600 cursor-pointer">历史</span></td></tr></table></div></div>
+</div>`;
+
+renderers['customs-cn'] = () => `
+<div class="fade-in max-w-5xl">
+  <div class="flex items-center justify-between mb-4"><h2 class="text-lg font-semibold">🏛️ 霍尔果斯口岸出口报关</h2><button class="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700" onclick="openModal(modalCustomsSubmit())">提交报关</button></div>
+  <div class="grid grid-cols-4 gap-4 mb-4">
+    <div class="detail-card"><div class="text-xs text-gray-400">待提交</div><div class="text-xl font-bold mt-0.5">8</div></div>
+    <div class="detail-card"><div class="text-xs text-gray-400">审核中</div><div class="text-xl font-bold mt-0.5 text-blue-600">4</div></div>
+    <div class="detail-card"><div class="text-xs text-gray-400">审核通过</div><div class="text-xl font-bold mt-0.5 text-green-600">26</div></div>
+    <div class="detail-card"><div class="text-xs text-gray-400">审核驳回</div><div class="text-xl font-bold mt-0.5 text-red-500">2</div><div class="text-xs text-red-500 mt-0.5 cursor-pointer" onclick="openModal(modalCustomsSupplement())">需补充 →</div></div>
+  </div>
+  <div class="detail-card p-0 overflow-hidden">
+    <div class="overflow-x-auto"><table><tr><th>报关单号</th><th>批次</th><th>货物</th><th>金额</th><th>提交时间</th><th>状态</th><th>操作</th></tr>
+    <tr><td class="font-medium">BG-20260519-001</td><td>B-0519-001</td><td>电子产品</td><td>$45,200</td><td>10:20</td><td><span class="badge bg-blue-50 text-blue-600">审核中</span></td><td class="text-blue-600 cursor-pointer">查看</td></tr>
+    <tr><td class="font-medium">BG-20260519-002</td><td>B-0519-002</td><td>服装鞋帽</td><td>$128,000</td><td>09:15</td><td><span class="badge bg-red-50 text-red-600">❌ 材料缺失</span></td><td class="text-blue-600 cursor-pointer" onclick="openModal(modalCustomsSupplement())">补充</td></tr>
+    <tr><td class="font-medium">BG-20260518-005</td><td>B-0518-008</td><td>食品饮料</td><td>$22,800</td><td>昨日</td><td><span class="badge bg-green-50 text-green-600">✅ 已通关</span></td><td class="text-blue-600 cursor-pointer" onclick="openModal(modalCustomsConfirm())">归档</td></tr></table></div>
+  </div>
+</div>`;
+
+renderers.delivery = () => `
+<div class="fade-in max-w-5xl">
+  <div class="flex items-center justify-between mb-4"><h2 class="text-lg font-semibold">🚴 收件点配送管理（408个收件点）</h2><button class="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700">+ 配送任务</button></div>
+  <div class="grid grid-cols-4 gap-4 mb-4">
+    <div class="detail-card"><div class="text-xs text-gray-400">今日配送任务</div><div class="text-xl font-bold mt-0.5">86</div></div>
+    <div class="detail-card"><div class="text-xs text-gray-400">配送中</div><div class="text-xl font-bold mt-0.5 text-blue-600">38</div></div>
+    <div class="detail-card"><div class="text-xs text-gray-400">已签收</div><div class="text-xl font-bold mt-0.5 text-green-600">44</div></div>
+    <div class="detail-card"><div class="text-xs text-gray-400">异常</div><div class="text-xl font-bold mt-0.5 text-red-500">4</div></div>
+  </div>
+  <div class="detail-card p-0 overflow-hidden">
+    <div class="overflow-x-auto"><table><tr><th>配送单号</th><th>收件点</th><th>地址</th><th>包裹数</th><th>配送员</th><th>状态</th><th>操作</th></tr>
+    <tr><td class="font-medium">PS-001</td><td>阿拉木图1号店</td><td>Abay Ave 12</td><td>24</td><td>快递A组</td><td><span class="badge bg-green-50 text-green-600">✅ 已签收</span></td><td class="text-blue-600 cursor-pointer">查看</td></tr>
+    <tr><td class="font-medium">PS-002</td><td>友谊路分店</td><td>Dostyk Ave 88</td><td>18</td><td>快递B组</td><td><span class="badge bg-blue-50 text-blue-600">🚚 配送中</span></td><td class="text-blue-600 cursor-pointer">追踪</td></tr>
+    <tr><td class="font-medium">PS-003</td><td>绿色市场店</td><td>Zheltoksan 45</td><td>31</td><td>快递A组</td><td><span class="badge bg-red-50 text-red-600">⚠️ 异常-拒收</span></td><td class="text-blue-600 cursor-pointer" onclick="openModal(modalDeliveryException())">处理</td></tr></table></div>
+  </div>
+</div>`;
+
+renderers.reconciliation = () => `
+<div class="fade-in max-w-5xl">
+  <div class="flex items-center justify-between mb-4"><h2 class="text-lg font-semibold">💰 对账管理</h2><button class="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700" onclick="openModal(modalRecon())">执行对账</button></div>
+  <div class="grid grid-cols-3 gap-4 mb-4">
+    <div class="detail-card"><div class="text-xs text-gray-400">本期应结</div><div class="text-xl font-bold mt-0.5">¥246,800</div></div>
+    <div class="detail-card"><div class="text-xs text-gray-400">已对账</div><div class="text-xl font-bold mt-0.5">¥218,200</div></div>
+    <div class="detail-card"><div class="text-xs text-gray-400">差异金额</div><div class="text-xl font-bold mt-0.5 text-red-500">¥3,280</div><div class="text-xs text-red-500 mt-0.5">12 笔待处理</div></div>
+  </div>
+  <div class="detail-card p-0 overflow-hidden">
+    <div class="flex items-center gap-2 p-3 border-b border-gray-100 bg-gray-50/50"><select class="max-w-[100px]"><option>周期</option><option>日结</option><option selected>周结</option><option>月结</option></select><select class="max-w-[140px]"><option>全部维度</option><option>按订单</option><option>按运单</option><option>按收件点</option></select><span class="text-blue-600 text-sm ml-auto cursor-pointer">📊 生成对账凭证</span></div>
+    <div class="overflow-x-auto"><table><tr><th>对账编号</th><th>周期</th><th>总金额</th><th>差异金额</th><th>差异笔数</th><th>状态</th><th>操作</th></tr>
+    <tr><td class="font-medium">DZ-2026-W20</td><td>05/12 - 05/18</td><td>¥246,800</td><td class="text-red-500">¥3,280</td><td>12</td><td><span class="badge bg-yellow-50 text-yellow-600">差异处理中</span></td><td class="text-blue-600 cursor-pointer" onclick="openModal(modalReconDiff())">处理差异</td></tr>
+    <tr><td class="font-medium">DZ-2026-W19</td><td>05/05 - 05/11</td><td>¥198,500</td><td class="text-green-600">¥0</td><td>0</td><td><span class="badge bg-green-50 text-green-600">✅ 已对平</span></td><td class="text-blue-600 cursor-pointer">查看</td></tr></table></div>
+  </div>
+</div>`;
+
+renderers.tracking = () => `
+<div class="fade-in max-w-5xl">
+  <h2 class="text-lg font-semibold mb-4">🔍 物流状态实时追踪</h2>
+  <div class="detail-card mb-4"><div class="flex items-center gap-3"><input type="text" placeholder="输入订单号 / 运单号 / 收件人信息" class="max-w-md"><button class="bg-blue-600 text-white px-5 py-2 rounded-lg text-sm font-medium hover:bg-blue-700">查询</button><span class="text-xs text-gray-400">支持多维度模糊查询</span></div></div>
+  <div class="detail-card p-0 overflow-hidden">
+    <div class="p-4 border-b border-gray-100"><div class="flex items-center justify-between"><div><span class="font-medium text-sm">订单号：ORD-20260519-001</span><span class="text-xs text-gray-400 ml-3">运单号：YW-001</span></div><span class="badge bg-blue-50 text-blue-600">运输中</span></div><div class="text-xs text-gray-400 mt-0.5">深圳云仓 → 霍尔果斯口岸 → 阿拉木图仓库 → P-0001 阿拉木图1号店</div></div>
+    <div class="p-4"><div class="flex gap-4"><div class="flex flex-col items-center gap-0.5"><div class="w-3.5 h-3.5 rounded-full bg-green-500 shadow-sm"></div><div class="w-0.5 h-12 bg-green-200"></div><div class="w-3.5 h-3.5 rounded-full bg-green-500 shadow-sm"></div><div class="w-0.5 h-12 bg-green-200"></div><div class="w-3.5 h-3.5 rounded-full bg-green-500 shadow-sm"></div><div class="w-0.5 h-12 bg-green-200"></div><div class="w-3.5 h-3.5 rounded-full bg-blue-500 shadow-sm"></div><div class="w-0.5 h-12 bg-gray-200"></div><div class="w-3.5 h-3.5 rounded-full bg-gray-300"></div><div class="w-0.5 h-12 bg-gray-200"></div><div class="w-3.5 h-3.5 rounded-full bg-gray-300"></div></div>
+    <div class="text-sm space-y-[17px]"><div><div class="font-medium">📦 云仓集货完成</div><div class="text-xs text-gray-400">2026-05-18 14:30 · 深圳云仓 · 操作人：张集货</div></div><div><div class="font-medium">🚛 装车发运</div><div class="text-xs text-gray-400">2026-05-18 16:00 · 车辆：粤B·88231 · 司机：王师傅</div></div><div><div class="font-medium">🏛️ 霍尔果斯报关通过</div><div class="text-xs text-gray-400">2026-05-19 08:30 · 报关单号：BG-20260519-001</div></div><div><div class="font-medium text-blue-600">🚚 口岸→阿拉木图运输中</div><div class="text-xs text-gray-400">当前位置：阿拉木图 200km · 预计到达 20:00</div></div><div><div class="text-gray-400">📦 阿拉木图仓库分拣</div><div class="text-xs text-gray-400">待到达</div></div><div><div class="text-gray-400">✍️ 收件点签收</div><div class="text-xs text-gray-400">待分拣</div></div></div></div></div>
+  </div>
+</div>`;
+
+renderers.permissions = () => `
+<div class="fade-in max-w-5xl">
+  <h2 class="text-lg font-semibold mb-4">🔐 权限管理</h2>
+  <div class="detail-card p-0 overflow-hidden">
+    <div class="overflow-x-auto"><table><tr><th>角色</th><th>权限描述</th><th>可访问模块</th><th>成员数</th><th>操作</th></tr>
+    <tr><td class="font-medium">超级管理员</td><td class="text-xs text-gray-500">全部系统权限</td><td class="text-xs text-gray-500">全部模块</td><td>2</td><td class="text-blue-600 cursor-pointer">编辑</td></tr>
+    <tr><td class="font-medium">运营管理员</td><td class="text-xs text-gray-500">物流流程管理、数据查看</td><td class="text-xs text-gray-500">除财务外全部</td><td>5</td><td class="text-blue-600 cursor-pointer">编辑</td></tr>
+    <tr><td class="font-medium">财务人员</td><td class="text-xs text-gray-500">对账、结算、开票、查看</td><td class="text-xs text-gray-500">财务模块</td><td>3</td><td class="text-blue-600 cursor-pointer">编辑</td></tr>
+    <tr><td class="font-medium">仓库操作员</td><td class="text-xs text-gray-500">收货、入库、分拣操作</td><td class="text-xs text-gray-500">集货、分装、分拣</td><td>15</td><td class="text-blue-600 cursor-pointer">编辑</td></tr>
+    <tr><td class="font-medium">报关专员</td><td class="text-xs text-gray-500">报关文件提交、进度查询</td><td class="text-xs text-gray-500">文件、报关、清关</td><td>4</td><td class="text-blue-600 cursor-pointer">编辑</td></tr>
+    <tr><td class="font-medium">收件点管理员</td><td class="text-xs text-gray-500">本收件点数据、签收</td><td class="text-xs text-gray-500">配送、签收（仅本点）</td><td>408</td><td class="text-blue-600 cursor-pointer">编辑</td></tr>
+    <tr><td class="font-medium">客户</td><td class="text-xs text-gray-500">物流追踪、报表</td><td class="text-xs text-gray-500">追踪、统计</td><td>—</td><td class="text-blue-600 cursor-pointer">编辑</td></tr></table></div>
+  </div>
+</div>`;
+
+renderers.stats = () => `
+<div class="fade-in max-w-5xl">
+  <h2 class="text-lg font-semibold mb-4">📈 数据统计分析</h2>
+  <div class="detail-card mb-4"><div class="flex items-center justify-between mb-4"><div class="flex flex-wrap gap-2"><button class="px-3 py-1.5 bg-blue-50 text-blue-600 rounded-lg text-sm font-medium">集货量</button><button class="px-3 py-1.5 text-gray-500 rounded-lg text-sm hover:bg-gray-50">分装效率</button><button class="px-3 py-1.5 text-gray-500 rounded-lg text-sm hover:bg-gray-50">运输时效</button><button class="px-3 py-1.5 text-gray-500 rounded-lg text-sm hover:bg-gray-50">签收率</button></div><select class="max-w-[120px]"><option>最近7天</option><option>最近30天</option><option>自定义</option></select></div>
+    <div class="h-60 bg-gradient-to-br from-gray-50 to-gray-100 rounded-xl flex items-center justify-center text-gray-400 text-sm border border-dashed border-gray-200">📊 图表可视化区域（柱状图/折线图/饼图）</div></div>
+  <div class="grid grid-cols-5 gap-4"><div class="detail-card text-center"><div class="text-lg font-bold text-blue-600">98.2%</div><div class="text-xs text-gray-400 mt-0.5">报关通过率</div></div><div class="detail-card text-center"><div class="text-lg font-bold text-green-600">96.5%</div><div class="text-xs text-gray-400 mt-0.5">配送完成率</div></div><div class="detail-card text-center"><div class="text-lg font-bold text-green-600">99.1%</div><div class="text-xs text-gray-400 mt-0.5">对账准确率</div></div><div class="detail-card text-center"><div class="text-lg font-bold text-purple-600">48h</div><div class="text-xs text-gray-400 mt-0.5">平均签收时效</div></div><div class="detail-card text-center"><div class="text-lg font-bold text-yellow-600">¥486K</div><div class="text-xs text-gray-400 mt-0.5">月结算金额</div></div></div>
+</div>`;
+
+renderers.alerts = () => `
+<div class="fade-in max-w-5xl">
+  <h2 class="text-lg font-semibold mb-4">⚠️ 异常预警中心</h2>
+  <div class="space-y-3">
+    <div class="detail-card border-l-4 border-red-500 flex items-center justify-between"><div><div class="font-medium text-sm">🔴 货物滞留超期</div><div class="text-xs text-gray-400 mt-0.5">批次 B-20260517-003 在霍尔果斯口岸滞留超过48小时 · 建议联系哈方清关代理加急处理</div></div><div class="flex items-center gap-2 shrink-0"><span class="badge bg-red-50 text-red-600">紧急</span><span class="text-blue-600 text-sm cursor-pointer">处理</span></div></div>
+    <div class="detail-card border-l-4 border-yellow-500 flex items-center justify-between"><div><div class="font-medium text-sm">🟡 报关材料缺失</div><div class="text-xs text-gray-400 mt-0.5">批次 B-20260519-002 · 商业发票缺少签名页 · 需补充后重新提交</div></div><div class="flex items-center gap-2 shrink-0"><span class="badge bg-yellow-50 text-yellow-600">待处理</span><span class="text-blue-600 text-sm cursor-pointer" onclick="openModal(modalCustomsSupplement())">补充</span></div></div>
+    <div class="detail-card border-l-4 border-blue-500 flex items-center justify-between"><div><div class="font-medium text-sm">🔵 对账差异超标</div><div class="text-xs text-gray-400 mt-0.5">周结 DZ-2026-W20 差异 ¥3,280 超过阈值 ¥2,000 · 涉及12笔订单需人工复核</div></div><div class="flex items-center gap-2 shrink-0"><span class="badge bg-blue-50 text-blue-600">注意</span><span class="text-blue-600 text-sm cursor-pointer" onclick="openModal(modalReconDiff())">查看</span></div></div>
+    <div class="detail-card border-l-4 border-green-500 flex items-center justify-between"><div><div class="font-medium text-sm">🟢 物流轨迹偏离预警</div><div class="text-xs text-gray-400 mt-0.5">车牌新A·88231 偏离预设运输路线5km · 已通知司机确认</div></div><div class="flex items-center gap-2 shrink-0"><span class="badge bg-green-50 text-green-600">已处理</span><span class="text-blue-600 text-sm cursor-pointer">查看</span></div></div>
+  </div>
+</div>`;
+
+// ============ MODAL HELPERS ============
+function modalWarehouseReceive(){return `<h3 class="font-semibold text-lg mb-4">📦 收货登记</h3><div class="space-y-3"><div><label class="text-sm text-gray-500 mb-1 block">批次号</label><input type="text" value="B-20260520-001" class="bg-gray-50"></div><div><label class="text-sm text-gray-500 mb-1 block">品名</label><input type="text" placeholder="输入货物品名"></div><div class="grid grid-cols-2 gap-3"><div><label class="text-sm text-gray-500 mb-1 block">SKU</label><input type="text"></div><div><label class="text-sm text-gray-500 mb-1 block">数量（箱）</label><input type="number"></div></div><div class="grid grid-cols-2 gap-3"><div><label class="text-sm text-gray-500 mb-1 block">重量（kg）</label><input type="number"></div><div><label class="text-sm text-gray-500 mb-1 block">货主</label><input type="text"></div></div><div><label class="text-sm text-gray-500 mb-1 block">保质期</label><input type="date"></div></div><div class="flex gap-2 mt-6"><button class="bg-blue-600 text-white px-5 py-2 rounded-lg text-sm flex-1 font-medium" onclick="closeModal()">确认收货</button><button class="border border-gray-200 px-5 py-2 rounded-lg text-sm flex-1" onclick="closeModal()">取消</button></div>`;}
+function modalSorting(){return `<h3 class="font-semibold text-lg mb-4">📋 新建分装任务</h3><div class="space-y-3"><div><label class="text-sm text-gray-500 mb-1 block">关联批次</label><select><option>B-20260519-001 · 电子产品 · 520kg</option><option>B-20260519-002 · 服装鞋帽 · 1,280kg</option></select></div><div><label class="text-sm text-gray-500 mb-1 block">分配方式</label><select><option>按收件点自动分配</option><option>手动选择收件点</option></select></div><div><label class="text-sm text-gray-500 mb-1 block">分装人员</label><div class="flex flex-wrap gap-2"><label class="flex items-center gap-1"><input type="checkbox"> 张三</label><label class="flex items-center gap-1"><input type="checkbox"> 李四</label><label class="flex items-center gap-1"><input type="checkbox"> 王五</label><label class="flex items-center gap-1"><input type="checkbox"> 赵六</label></div></div></div><div class="flex gap-2 mt-6"><button class="bg-blue-600 text-white px-5 py-2 rounded-lg text-sm flex-1 font-medium" onclick="closeModal()">创建任务</button><button class="border border-gray-200 px-5 py-2 rounded-lg text-sm flex-1" onclick="closeModal()">取消</button></div>`;}
+function modalDocGen(){return `<h3 class="font-semibold text-lg mb-4">📄 生成文件</h3><div class="space-y-3"><div><label class="text-sm text-gray-500 mb-1 block">选择批次</label><select><option>B-20260519-001 · 电子产品 · 520kg</option><option>B-20260519-002 · 服装鞋帽 · 1,280kg</option></select></div><div><label class="text-sm text-gray-500 mb-1 block">文件类型（可多选）</label><div class="flex flex-wrap gap-2"><label class="flex items-center gap-1"><input type="checkbox" checked> 装车清单</label><label class="flex items-center gap-1"><input type="checkbox" checked> 商业发票</label><label class="flex items-center gap-1"><input type="checkbox" checked> 装箱单</label><label class="flex items-center gap-1"><input type="checkbox"> 原产地证明</label></div></div></div><div class="flex gap-2 mt-6"><button class="bg-blue-600 text-white px-5 py-2 rounded-lg text-sm flex-1 font-medium" onclick="closeModal()">一键生成所选文件</button><button class="border border-gray-200 px-5 py-2 rounded-lg text-sm flex-1" onclick="closeModal()">取消</button></div>`;}
+function modalDocPreview(){return `<div class="flex items-center justify-between mb-4"><h3 class="font-semibold text-lg">📄 文件预览</h3><span class="badge bg-blue-50 text-blue-600">v1.0</span></div><div class="bg-gray-50 rounded-xl p-5 text-sm leading-relaxed font-mono"><div class="text-center font-bold mb-3 text-base">COMMERCIAL INVOICE</div><div class="flex justify-between text-xs mb-2"><span>Invoice No: INV-20260519-001</span><span>Date: 2026-05-19</span></div><div class="text-xs">Shipper: Shenzhen Tech Co., Ltd</div><div class="text-xs">Consignee: Almaty Distribution Center</div><div class="text-xs mb-2">Port of Loading: Horgos, China → Port of Discharge: Almaty, Kazakhstan</div><hr class="my-2"><table class="text-xs w-full"><tr><th class="text-left">Item Description</th><th class="text-right">Qty</th><th class="text-right">Unit Price</th><th class="text-right">Total</th></tr><tr><td>Electronic Components</td><td class="text-right">200</td><td class="text-right">USD $126.00</td><td class="text-right">USD $25,200.00</td></tr><tr><td>Accessories & Parts</td><td class="text-right">500</td><td class="text-right">USD $40.00</td><td class="text-right">USD $20,000.00</td></tr></table><hr class="my-2"><div class="flex justify-between font-bold text-xs"><span>Total Amount:</span><span>USD $45,200.00</span></div></div><div class="flex gap-2 mt-4"><button class="bg-green-600 text-white px-4 py-2 rounded-lg text-sm flex-1 font-medium" onclick="closeModal()">📥 导出 PDF</button><button class="bg-white border border-gray-200 px-4 py-2 rounded-lg text-sm flex-1" onclick="closeModal()">📨 发送邮件</button><button class="border border-gray-200 px-4 py-2 rounded-lg text-sm flex-1" onclick="closeModal()">关闭</button></div>`;}
+function modalCustomsSubmit(){return `<h3 class="font-semibold text-lg mb-4">🏛️ 提交报关</h3><div class="space-y-3"><div><label class="text-sm text-gray-500 mb-1 block">报关批次</label><select><option>B-20260519-001 · 电子产品 · $45,200</option></select></div><div><label class="text-sm text-gray-500 mb-1 block">报关口岸</label><input type="text" value="霍尔果斯口岸" disabled class="bg-gray-50"></div><div><label class="text-sm text-gray-500 mb-1 block">报关文件清单</label><div class="flex justify-between items-center bg-gray-50 p-2 rounded-lg text-sm mb-1"><span>📄 商业发票_v1.0.pdf</span><span class="text-green-600 text-xs">✓ 已生成</span></div><div class="flex justify-between items-center bg-gray-50 p-2 rounded-lg text-sm mb-1"><span>📄 装箱单_v1.0.pdf</span><span class="text-green-600 text-xs">✓ 已生成</span></div><div class="flex justify-between items-center bg-gray-50 p-2 rounded-lg text-sm"><span>📄 原产地证明_v1.0.pdf</span><span class="text-yellow-600 text-xs">⏳ 待生成</span></div></div></div><div class="flex gap-2 mt-6"><button class="bg-blue-600 text-white px-5 py-2 rounded-lg text-sm flex-1 font-medium" onclick="closeModal()">提交至口岸监管系统</button><button class="border border-gray-200 px-5 py-2 rounded-lg text-sm flex-1" onclick="closeModal()">取消</button></div>`;}
+function modalCustomsSupplement(){return `<h3 class="font-semibold text-lg mb-4">📎 补充报关材料</h3><div class="bg-yellow-50 p-3 rounded-lg text-sm text-yellow-700 mb-4 flex gap-2"><span>⏳</span>报关单 BG-20260519-002 审核驳回原因：商业发票文件缺少签名页，请重新上传签名后的版本</div><div class="space-y-3"><div><label class="text-sm text-gray-500 mb-1 block">补充文件</label><div class="border-2 border-dashed border-gray-200 rounded-xl p-8 text-center text-sm text-gray-400 cursor-pointer hover:border-blue-400 hover:bg-blue-50/30 transition-all">📤 点击上传或拖拽文件到此处<br><span class="text-[10px]">支持 PDF、Word、Excel 格式，单个文件不超过20MB</span></div></div><div><label class="text-sm text-gray-500 mb-1 block">补充说明</label><textarea class="h-20" placeholder="请描述补充的文件内容及原因..."></textarea></div></div><div class="flex gap-2 mt-4"><button class="bg-blue-600 text-white px-5 py-2 rounded-lg text-sm flex-1 font-medium" onclick="closeModal()">提交补充</button><button class="border border-gray-200 px-5 py-2 rounded-lg text-sm flex-1" onclick="closeModal()">取消</button></div>`;}
+function modalCustomsConfirm(){return `<div class="text-center py-4"><div class="text-5xl mb-3">✅</div><h3 class="font-semibold text-lg">报关完成确认</h3><p class="text-sm text-gray-400 mt-2">BG-20260518-005 已通关放行</p><div class="bg-gray-50 rounded-lg p-4 text-sm text-left mt-4"><div class="flex justify-between"><span>报关单号</span><span class="font-medium">BG-20260518-005</span></div><div class="flex justify-between mt-1"><span>货物</span><span>食品饮料 · 340kg</span></div><div class="flex justify-between mt-1"><span>通关时间</span><span>2026-05-19 08:30</span></div></div></div><div class="flex gap-2 mt-4"><button class="bg-blue-600 text-white px-5 py-2 rounded-lg text-sm flex-1 font-medium" onclick="closeModal()">确认归档</button><button class="border border-gray-200 px-5 py-2 rounded-lg text-sm flex-1" onclick="closeModal()">取消</button></div>`;}
+function modalRecon(){return `<h3 class="font-semibold text-lg mb-4">💰 执行对账</h3><div class="space-y-3"><div><label class="text-sm text-gray-500 mb-1 block">对账周期</label><select><option selected>周结（2026-05-12 ~ 2026-05-18）</option><option>月结（2026-05-01 ~ 2026-05-18）</option><option>日结（2026-05-18）</option></select></div><div><label class="text-sm text-gray-500 mb-1 block">对账维度</label><div class="flex flex-wrap gap-3"><label class="flex items-center gap-1.5"><input type="checkbox" checked> 按订单</label><label class="flex items-center gap-1.5"><input type="checkbox" checked> 按运单</label><label class="flex items-center gap-1.5"><input type="checkbox"> 按收件点</label><label class="flex items-center gap-1.5"><input type="checkbox"> 按运输批次</label></div></div><div><label class="text-sm text-gray-500 mb-1 block">对账规则</label><select><option>标准规则（运费+附加费-折扣）</option><option>含汇率调整</option></select></div></div><div class="flex gap-2 mt-6"><button class="bg-blue-600 text-white px-5 py-2 rounded-lg text-sm flex-1 font-medium" onclick="closeModal()">开始对账</button><button class="border border-gray-200 px-5 py-2 rounded-lg text-sm flex-1" onclick="closeModal()">取消</button></div>`;}
+function modalReconDiff(){return `<h3 class="font-semibold text-lg mb-4">🔍 对账差异处理</h3><div class="mb-4 text-sm"><span class="font-medium">DZ-2026-W20</span><span class="text-gray-400 ml-2">共 12 笔差异，合计 ¥3,280</span></div><div class="space-y-2 mb-4"><div class="flex items-center justify-between p-3 bg-gray-50 rounded-lg text-sm border border-gray-100"><div><span class="font-medium">ORD-202605-001</span><span class="text-xs text-gray-400 ml-2">费率计算偏差</span></div><span class="text-red-500 font-medium">-¥280</span></div><div class="flex items-center justify-between p-3 bg-gray-50 rounded-lg text-sm border border-gray-100"><div><span class="font-medium">ORD-202605-042</span><span class="text-xs text-gray-400 ml-2">附加费漏记</span></div><span class="text-red-500 font-medium">-¥150</span></div><div class="flex items-center justify-between p-3 bg-gray-50 rounded-lg text-sm border border-gray-100"><div><span class="font-medium">YW-202605-088</span><span class="text-xs text-gray-400 ml-2">汇率波动</span></div><span class="text-green-500 font-medium">+¥320</span></div></div><div class="flex gap-2"><button class="bg-blue-600 text-white px-5 py-2 rounded-lg text-sm flex-1 font-medium" onclick="closeModal()">批量标记已处理</button><button class="border border-gray-200 px-5 py-2 rounded-lg text-sm flex-1" onclick="closeModal()">取消</button></div>`;}
+function modalDeliveryException(){return `<h3 class="font-semibold text-lg mb-4">⚠️ 配送异常处理</h3><div class="bg-red-50 p-3 rounded-lg text-sm text-red-700 mb-4 flex gap-2"><span>🚴</span>配送单 PS-003 · 绿色市场店 · 收件人拒收</div><div class="space-y-3"><div><label class="text-sm text-gray-500 mb-1 block">异常类型</label><select><option selected>收件人拒收</option><option>地址错误</option><option>包裹破损</option><option>超时未取</option></select></div><div><label class="text-sm text-gray-500 mb-1 block">处理方案</label><textarea class="h-20" placeholder="输入处理方案..."></textarea></div><div><label class="text-sm text-gray-500 mb-1 block">退回方式</label><select><option>退回阿拉木图仓库</option><option>重新配送</option><option>联系客服处理</option></select></div></div><div class="flex gap-2 mt-4"><button class="bg-blue-600 text-white px-5 py-2 rounded-lg text-sm flex-1 font-medium" onclick="closeModal()">提交处理</button><button class="border border-gray-200 px-5 py-2 rounded-lg text-sm flex-1" onclick="closeModal()">取消</button></div>`;}
+
+// ============ FALLBACK RENDERERS ============
+['transport','customs-kz','port-transport','warehouse-kz','signin','settlement','invoice','billing'].forEach(id => {
+  renderers[id] = renderers.dashboard;
+  if(id==='settlement') renderers[id]=renderers.reconciliation;
+});
+
+// ============ INIT ============
+buildSidebar();
+if(window.location.hash==='#main') showPage('main');
+</script>
+
+</body>
+</html>

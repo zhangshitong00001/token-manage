@@ -156,9 +156,12 @@ def code_login(
     if user.role == "admin":
         set_admin_session(user.id, token)
 
-    # 设置 httpOnly Cookie（自动携带 Token，防 XSS 窃取）
+    # 手动构建响应，确保 httpOnly Cookie 被正确设置
+    from fastapi.responses import JSONResponse
+    resp_data = TokenResponse(access_token=token, user=UserProfile.model_validate(user)).model_dump(mode="json")
+    resp = JSONResponse(content=resp_data)
     max_age = 30 * 24 * 3600 if remember_me else settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60
-    response.set_cookie(
+    resp.set_cookie(
         key="token",
         value=token,
         httponly=True,
@@ -167,8 +170,7 @@ def code_login(
         max_age=max_age,
         path="/",
     )
-
-    return TokenResponse(access_token=token, user=UserProfile.model_validate(user))
+    return resp
 
 
 # ---- 管理员邮箱验证码登录（唯一方式）----
@@ -232,9 +234,12 @@ def admin_login(
     token = create_access_token({"sub": str(user.id), "role": user.role})
     set_admin_session(user.id, token)
 
-    # 设置 httpOnly Cookie
+    # 手动构建响应，确保 Cookie 正确设置
+    from fastapi.responses import JSONResponse
+    resp_data = TokenResponse(access_token=token, user=UserProfile.model_validate(user)).model_dump(mode="json")
+    resp = JSONResponse(content=resp_data)
     max_age = settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60
-    response.set_cookie(
+    resp.set_cookie(
         key="token",
         value=token,
         httponly=True,
@@ -243,5 +248,4 @@ def admin_login(
         max_age=max_age,
         path="/",
     )
-
-    return TokenResponse(access_token=token, user=UserProfile.model_validate(user))
+    return resp
