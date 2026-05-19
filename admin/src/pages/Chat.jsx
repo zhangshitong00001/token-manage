@@ -80,18 +80,22 @@ export default function Chat() {
       const reader = response.body.getReader()
       const decoder = new TextDecoder()
       let fullText = ''
+      let buffer = ''  // SSE 行缓冲，防止 TCP 包在行中断开
 
       while (true) {
         const { done, value } = await reader.read()
         if (done) break
 
-        const chunk = decoder.decode(value)
-        const lines = chunk.split('\n')
+        buffer += decoder.decode(value, { stream: true })
+        const lines = buffer.split('\n')
+        // 最后一个元素可能不完整，保留到下一轮
+        buffer = lines.pop() || ''
 
         for (const line of lines) {
-          if (!line.startsWith('data: ')) continue
+          const trimmed = line.trim()
+          if (!trimmed.startsWith('data: ')) continue
           try {
-            const data = JSON.parse(line.slice(6))
+            const data = JSON.parse(trimmed.slice(6))
             
             switch (data.type) {
               case 'text':

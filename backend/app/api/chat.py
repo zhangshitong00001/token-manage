@@ -1,9 +1,9 @@
-"""Claude Chat - SSE 流式聊天接口"""
-import asyncio
+"""Claude Chat - 真正的 SSE 流式聊天接口（直接调用代理API）"""
+
 import json
-import os
 import time
 
+import httpx
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
@@ -12,29 +12,15 @@ from app.core.deps import get_current_user
 
 router = APIRouter(prefix="/api/chat", tags=["AI聊天"])
 
-# Claude 环境变量
-CLAUDE_ENV = {
-    **os.environ,
-    "ANTHROPIC_BASE_URL": "http://127.0.0.1:4000",
-    "ANTHROPIC_API_KEY": open("/root/.deepseek_key").read().strip(),
-}
+# DeepSeek 翻译代理地址
+PROXY_URL = "http://127.0.0.1:4000/v1/messages"
+MODEL = "claude-sonnet-4-20250514"  # → deepseek-chat via proxy
+MAX_TOKENS = 4096
 
 
 class ChatRequest(BaseModel):
     message: str
-    history: list[dict] | None = None  # [{"role":"user","content":"..."}, {"role":"assistant","content":"..."}]
-
-
-def build_prompt(message: str, history: list[dict] | None) -> str:
-    """构建带上下文的 prompt"""
-    if not history:
-        return message
-    parts = []
-    for msg in history:
-        role = "User" if msg["role"] == "user" else "Assistant"
-        parts.append(f"{role}: {msg['content']}")
-    parts.append(f"User: {message}")
-    return "\n\n".join(parts)
+    history: list[dict] | None = None
 
 
 @router.post("/stream")
@@ -42,75 +28,146 @@ async def chat_stream(
     req: ChatRequest,
     user=Depends(get_current_user),
 ):
-    """SSE 流式聊天接口"""
-    prompt = build_prompt(req.message, req.history)
+    """SSE 流式聊天接口 — 直接代理HTTP流式，真正的逐字输出"""
 
     async def event_stream():
         start_time = time.time()
-        proc = await asyncio.create_subprocess_exec(
-            "claude",
-            "--bare",
-            "-p", prompt,
-            "--output-format", "stream-json",
-            "--verbose",
-            "--max-turns", "1",
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-            env=CLAUDE_ENV,
-            cwd="/root",
-        )
+
+        # 构建 Anthropic Messages API 请求体
+        messages = []
+        if req.history:
+            for msg in req.history:
+                messages.append({
+                    "role": msg.get("role", "user"),
+                    "content": msg.get("content", ""),
+                })
+        # 添加当前用户消息
+        messages.append({"role": "user", "content": req.message})
+
+        body = {
+            "model": MODEL,
+            "messages": messages,
+            "stream": True,
+            "max_tokens": MAX_TOKENS,
+        }
 
         # 发送开始事件
         yield f"data: {json.dumps({'type': 'start'})}\n\n"
 
         collected_text = ""
-        async for line in proc.stdout:
-            line = line.decode("utf-8", errors="replace").strip()
-            if not line:
-                continue
-            try:
-                data = json.loads(line)
-            except json.JSONDecodeError:
-                continue
+        token_count = 0
+        error_occurred = False
 
-            event_type = data.get("type", "")
-
-            if event_type == "assistant":
-                content = data.get("message", {}).get("content", [])
-                for block in content:
-                    if block.get("type") == "text":
-                        text = block["text"]
-                        # 流式发送文本块
-                        chunk = text[len(collected_text):]
-                        if chunk:
-                            collected_text = text
-                            yield f"data: {json.dumps({'type': 'text', 'content': chunk})}\n\n"
-                    elif block.get("type") == "tool_use":
+        try:
+            async with httpx.AsyncClient(timeout=httpx.Timeout(120.0, connect=10.0)) as client:
+                async with client.stream("POST", PROXY_URL, json=body) as resp:
+                    if resp.status_code != 200:
+                        error_body = await resp.aread()
                         yield f"data: {json.dumps({
-                            'type': 'tool_use',
-                            'name': block.get('name', ''),
-                            'input': block.get('input', {}),
+                            'type': 'error',
+                            'message': f'代理返回错误 ({resp.status_code}): {error_body.decode()}',
                         })}\n\n"
+                        return
 
-            elif event_type == "result":
-                yield f"data: {json.dumps({
-                    'type': 'done',
-                    'content': collected_text,
-                    'cost': data.get('total_cost_usd', 0),
-                    'tokens_input': data.get('usage', {}).get('input_tokens', 0),
-                    'tokens_output': data.get('usage', {}).get('output_tokens', 0),
-                    'duration_ms': data.get('duration_ms', 0),
-                })}\n\n"
+                    async for line in resp.aiter_lines():
+                        current_elapsed = time.time() - start_time
+                        if current_elapsed > 115:
+                            yield f"data: {json.dumps({
+                                'type': 'error',
+                                'message': '请求超时（120秒），请简化问题或重试',
+                            })}\n\n"
+                            error_occurred = True
+                            return
 
-        # 确保关闭进程
-        await proc.wait()
+                        raw = line.strip()
+                        if not raw:
+                            continue
 
-        # 超时或出错
-        elapsed = time.time() - start_time
-        if elapsed > 55:  # 接近 60 秒超时
+                        # 代理可能返回 data: 前缀或裸 JSON
+                        if raw.startswith("data: "):
+                            raw = raw[6:].strip()
+                            if not raw:
+                                continue
+
+                        try:
+                            event = json.loads(raw)
+                        except json.JSONDecodeError:
+                            continue
+
+                        event_type = event.get("type", "")
+
+                        # ---- 文本增量块 ----
+                        if event_type == "content_block_delta":
+                            delta = event.get("delta", {})
+                            if delta.get("type") == "text_delta":
+                                text = delta.get("text", "")
+                                if text:
+                                    collected_text += text
+                                    token_count += 1
+                                    yield f"data: {json.dumps({
+                                        'type': 'text',
+                                        'content': text,
+                                    })}\n\n"
+
+                        # ---- message_start（含完整信息） ----
+                        elif event_type == "message_start":
+                            msg_data = event.get("message", {})
+                            # 可能包含初始文本
+                            content_blocks = msg_data.get("content", [])
+                            for block in content_blocks:
+                                if block.get("type") == "text":
+                                    text = block.get("text", "")
+                                    if text:
+                                        chunk = text[len(collected_text):]
+                                        if chunk:
+                                            collected_text = text
+                                            yield f"data: {json.dumps({
+                                                'type': 'text',
+                                                'content': chunk,
+                                            })}\n\n"
+
+                        # ---- message_delta（含用量信息） ----
+                        elif event_type == "message_delta":
+                            usage = event.get("usage", {})
+                            elapsed = time.time() - start_time
+                            yield f"data: {json.dumps({
+                                'type': 'done',
+                                'content': collected_text,
+                                'tokens_output': usage.get('output_tokens', 0),
+                                'duration_ms': int(elapsed * 1000),
+                            })}\n\n"
+
+                        # ---- message_stop ----
+                        elif event_type == "message_stop":
+                            return
+
+        except httpx.ConnectError:
             yield f"data: {json.dumps({
                 'type': 'error',
-                'message': '请求超时（60秒），请简化问题或重试',
+                'message': '无法连接到 AI 代理（127.0.0.1:4000），请确认代理服务是否运行',
+            })}\n\n"
+            error_occurred = True
+        except httpx.TimeoutException:
+            yield f"data: {json.dumps({
+                'type': 'error',
+                'message': 'AI 代理响应超时，请稍后重试',
+            })}\n\n"
+            error_occurred = True
+        except Exception as e:
+            yield f"data: {json.dumps({
+                'type': 'error',
+                'message': f'服务器内部错误: {str(e)}',
+            })}\n\n"
+            error_occurred = True
+
+        # 流结束但没有收到 done（异常退出）
+        if not error_occurred:
+            elapsed = time.time() - start_time
+            yield f"data: {json.dumps({
+                'type': 'done',
+                'content': collected_text,
+                'tokens_output': 0,
+                'duration_ms': int(elapsed * 1000),
             })}\n\n"
 
     return StreamingResponse(
@@ -120,5 +177,6 @@ async def chat_stream(
             "Cache-Control": "no-cache",
             "Connection": "keep-alive",
             "X-Accel-Buffering": "no",
+            "Content-Type": "text/event-stream; charset=utf-8",
         },
     )
