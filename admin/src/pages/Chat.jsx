@@ -1,19 +1,19 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react'
 import {
   Card, Input, Button, Typography, Space, Spin, Tooltip,
-  Tag, Alert, Collapse, Divider,
+  Tag, Alert, Collapse, Divider, Upload, message,
 } from 'antd'
 import {
   SendOutlined, RobotOutlined, UserOutlined,
   DeleteOutlined, ClearOutlined, DollarOutlined,
-  ClockCircleOutlined,
+  ClockCircleOutlined, PaperClipOutlined, FileTextOutlined,
+  CloseOutlined,
 } from '@ant-design/icons'
 import api from '../api'
 
 const { Text, Paragraph } = Typography
 const { TextArea } = Input
 
-// API Token 从 localStorage 获取
 function getToken() {
   return localStorage.getItem('admin_token') || ''
 }
@@ -25,16 +25,32 @@ const exampleQuestions = [
   '帮我写一个分析SQL',
 ]
 
+/** 文件类型图标 */
+function FileIcon({ type }) {
+  const colorMap = {
+    pdf: '#f40',
+    docx: '#2b5797',
+    excel: '#217346',
+    text: '#1677ff',
+    code: '#1677ff',
+    image: '#722ed1',
+  }
+  return (
+    <FileTextOutlined style={{ color: colorMap[type] || '#999', marginRight: 4 }} />
+  )
+}
+
 export default function Chat() {
   const [messages, setMessages] = useState([])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
   const [streamingText, setStreamingText] = useState('')
   const [currentCost, setCurrentCost] = useState(null)
+  const [uploadedFiles, setUploadedFiles] = useState([]) // [{file_id, name, type, size}]
+  const [uploading, setUploading] = useState(false)
   const messagesEndRef = useRef(null)
-  const abortRef = useRef(null)
+  const fileInputRef = useRef(null)
 
-  // 自动滚动到底部
   const scrollToBottom = useCallback(() => {
     setTimeout(() => {
       messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -45,6 +61,51 @@ export default function Chat() {
     scrollToBottom()
   }, [messages, streamingText, scrollToBottom])
 
+  /** 上传文件 */
+  const handleFileSelect = async (e) => {
+    const files = e.target.files
+    if (!files || files.length === 0) return
+
+    setUploading(true)
+    const token = getToken()
+
+    for (const file of files) {
+      const formData = new FormData()
+      formData.append('file', file)
+
+      try {
+        const res = await fetch('/api/chat/upload', {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${token}` },
+          body: formData,
+        })
+        if (!res.ok) {
+          const err = await res.json()
+          message.error(`${file.name}: ${err.detail || '上传失败'}`)
+          continue
+        }
+        const data = await res.json()
+        setUploadedFiles(prev => [...prev, {
+          file_id: data.file_id,
+          name: data.name,
+          type: data.type,
+          size: data.size,
+        }])
+        message.success(`✅ ${file.name} 已上传`)
+      } catch (err) {
+        message.error(`${file.name}: ${err.message}`)
+      }
+    }
+    setUploading(false)
+    // 清空 input 以支持重复选择同名文件
+    e.target.value = ''
+  }
+
+  /** 移除已上传的文件 */
+  const removeFile = (fileId) => {
+    setUploadedFiles(prev => prev.filter(f => f.file_id !== fileId))
+  }
+
   const sendMessage = async (text) => {
     const msg = text || input
     if (!msg.trim() || loading) return
@@ -54,23 +115,27 @@ export default function Chat() {
     setStreamingText('')
     setCurrentCost(null)
 
-    // 添加用户消息
-    const userMsg = { role: 'user', content: msg }
+    const userMsg = { role: 'user', content: msg, files: [...uploadedFiles] }
     const updatedMessages = [...messages, userMsg]
     setMessages(updatedMessages)
 
-    // 构建 history（不含最新消息）
     const history = messages.map(m => ({ role: m.role, content: m.content }))
 
     try {
       const token = getToken()
+      const body = { message: msg, history }
+      // 如果有上传的文件，带上
+      if (uploadedFiles.length > 0) {
+        body.files = uploadedFiles.map(f => ({ file_id: f.file_id, name: f.name }))
+      }
+
       const response = await fetch('/api/chat/stream', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`,
         },
-        body: JSON.stringify({ message: msg, history }),
+        body: JSON.stringify(body),
       })
 
       if (!response.ok) {
@@ -80,7 +145,7 @@ export default function Chat() {
       const reader = response.body.getReader()
       const decoder = new TextDecoder()
       let fullText = ''
-      let buffer = ''  // SSE 行缓冲，防止 TCP 包在行中断开
+      let buffer = ''
 
       while (true) {
         const { done, value } = await reader.read()
@@ -88,7 +153,6 @@ export default function Chat() {
 
         buffer += decoder.decode(value, { stream: true })
         const lines = buffer.split('\n')
-        // 最后一个元素可能不完整，保留到下一轮
         buffer = lines.pop() || ''
 
         for (const line of lines) {
@@ -96,7 +160,7 @@ export default function Chat() {
           if (!trimmed.startsWith('data: ')) continue
           try {
             const data = JSON.parse(trimmed.slice(6))
-            
+
             switch (data.type) {
               case 'text':
                 fullText += data.content
@@ -134,6 +198,8 @@ export default function Chat() {
     } finally {
       setLoading(false)
       setStreamingText('')
+      // 发送完后不清除文件（用户可手动移除或继续提问）
+      // setUploadedFiles([])
     }
   }
 
@@ -141,14 +207,21 @@ export default function Chat() {
     setMessages([])
     setStreamingText('')
     setCurrentCost(null)
+    setUploadedFiles([])
   }
 
-  // 处理回车发送
   const handleKeyDown = (e) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
       sendMessage()
     }
+  }
+
+  /** 格式化文件大小 */
+  const fmtSize = (bytes) => {
+    if (bytes < 1024) return `${bytes}B`
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)}KB`
+    return `${(bytes / 1024 / 1024).toFixed(1)}MB`
   }
 
   return (
@@ -183,7 +256,7 @@ export default function Chat() {
       {/* 消息区域 */}
       <div
         style={{
-          height: 'calc(100vh - 300px)',
+          height: 'calc(100vh - 340px)',
           minHeight: 400,
           overflowY: 'auto',
           padding: '12px 0',
@@ -195,6 +268,9 @@ export default function Chat() {
             <RobotOutlined style={{ fontSize: 48, marginBottom: 16 }} />
             <Paragraph type="secondary">
               我是 AI 助手，可以帮你查询数据、分析代码、写 SQL 等
+            </Paragraph>
+            <Paragraph type="secondary" style={{ fontSize: 13 }}>
+              支持上传 txt / py / pdf / docx / xlsx / json / md 等文件
             </Paragraph>
             <Space wrap>
               {exampleQuestions.map((q, i) => (
@@ -230,7 +306,6 @@ export default function Chat() {
                 color: msg.role === 'user' ? '#fff' : '#333',
                 whiteSpace: 'pre-wrap',
                 wordBreak: 'break-word',
-                fontFamily: msg.role === 'assistant' ? 'inherit' : 'inherit',
               }}
             >
               <div style={{ marginBottom: 4, fontSize: 12, opacity: 0.7 }}>
@@ -239,6 +314,16 @@ export default function Chat() {
                   {msg.role === 'user' ? '你' : 'AI'}
                 </span>
               </div>
+              {/* 显示用户消息中的文件信息 */}
+              {msg.files && msg.files.length > 0 && (
+                <div style={{ marginBottom: 6, fontSize: 12, opacity: 0.8 }}>
+                  {msg.files.map((f, fi) => (
+                    <Tag key={fi} style={{ marginBottom: 2 }}>
+                      <FileIcon type={f.type} /> {f.name}
+                    </Tag>
+                  ))}
+                </div>
+              )}
               <div>{msg.content}</div>
             </div>
           </div>
@@ -277,16 +362,59 @@ export default function Chat() {
 
       {/* 输入区域 */}
       <Card size="small">
-        <Space.Compact style={{ width: '100%' }}>
+        {/* 已上传文件列表 */}
+        {uploadedFiles.length > 0 && (
+          <div style={{ marginBottom: 8, display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+            {uploadedFiles.map((f) => (
+              <Tag
+                key={f.file_id}
+                closable
+                onClose={() => removeFile(f.file_id)}
+                style={{ margin: 0 }}
+              >
+                <FileIcon type={f.type} />
+                {f.name}
+                <span style={{ marginLeft: 4, opacity: 0.6, fontSize: 11 }}>
+                  {fmtSize(f.size)}
+                </span>
+              </Tag>
+            ))}
+          </div>
+        )}
+
+        <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8 }}>
+          {/* 附件按钮 */}
+          <div>
+            <input
+              ref={fileInputRef}
+              type="file"
+              multiple
+              style={{ display: 'none' }}
+              onChange={handleFileSelect}
+              accept=".txt,.py,.js,.ts,.jsx,.tsx,.vue,.css,.html,.json,.yaml,.yml,.md,.csv,.xml,.sql,.sh,.toml,.ini,.cfg,.conf,.log,.env,.pdf,.docx,.xlsx,.xls,.go,.rs,.java,.c,.cpp,.h,.hpp,.rb,.php,.kt,.gradle,.proto,.graphql"
+            />
+            <Tooltip title="上传文件（txt/py/pdf/docx/xlsx 等）">
+              <Button
+                icon={uploading ? <Spin size="small" /> : <PaperClipOutlined />}
+                onClick={() => fileInputRef.current?.click()}
+                disabled={loading || uploading}
+                size="large"
+              />
+            </Tooltip>
+          </div>
+
+          {/* 输入框 */}
           <TextArea
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="输入你的问题，按 Enter 发送..."
+            placeholder={uploadedFiles.length > 0 ? '输入关于这些文件的问题...' : '输入你的问题，按 Enter 发送...'}
             rows={2}
             disabled={loading}
-            style={{ resize: 'none' }}
+            style={{ resize: 'none', flex: 1 }}
           />
+
+          {/* 发送按钮 */}
           <Button
             type="primary"
             icon={<SendOutlined />}
@@ -296,7 +424,7 @@ export default function Chat() {
           >
             发送
           </Button>
-        </Space.Compact>
+        </div>
       </Card>
     </div>
   )

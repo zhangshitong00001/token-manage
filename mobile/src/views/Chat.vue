@@ -5,7 +5,7 @@
       <van-icon name="chat-o" size="20" color="#1989fa" />
       <span class="chat-title">AI 助手</span>
       <van-tag plain color="#1989fa" size="small">DeepSeek Flash</van-tag>
-      <van-tag v-if="lastCost" plain color="#07c160" size="small">
+      <van-tag v-if="lastCost" plain color="#07c160" size="small" style="margin-right:4px">
         ${{ lastCost.toFixed(6) }}
       </van-tag>
       <van-icon
@@ -23,6 +23,9 @@
         <van-icon name="chat-o" size="48" color="#ccc" />
         <p style="color: #999; margin-top: 8px">
           AI 助手，查询数据、分析、写代码
+        </p>
+        <p style="color: #bbb; margin-top: 4px; font-size: 12px">
+          支持上传 txt / py / pdf / docx / xlsx 等文件
         </p>
         <van-space direction="vertical" :size="8" style="width: 80%">
           <van-button
@@ -47,8 +50,14 @@
         :class="['msg-row', msg.role === 'user' ? 'msg-user' : 'msg-ai']"
       >
         <div class="msg-label">
-          <van-icon :name="msg.role === 'user' ? 'contact' : 'chat' " />
+          <van-icon :name="msg.role === 'user' ? 'contact' : 'chat'" />
           {{ msg.role === 'user' ? '你' : 'AI' }}
+        </div>
+        <!-- 用户消息中的文件信息 -->
+        <div v-if="msg.files && msg.files.length > 0" style="margin-bottom:6px;font-size:12px;display:flex;flex-wrap:wrap;gap:4px">
+          <van-tag v-for="(f, fi) in msg.files" :key="fi" plain size="small">
+            📄 {{ f.name }}
+          </van-tag>
         </div>
         <div class="msg-bubble" v-html="renderContent(msg.content)" />
       </div>
@@ -68,25 +77,53 @@
 
     <!-- 输入区域 -->
     <div class="chat-input">
-      <van-field
-        v-model="input"
-        type="textarea"
-        :autosize="{ minHeight: 44, maxHeight: 100 }"
-        placeholder="输入你的问题..."
-        :disabled="loading"
-        @keypress.enter.exact.prevent="sendMessage(input)"
-      >
-        <template #button>
-          <van-button
-            :icon="loading ? 'loading' : 'send'"
-            :disabled="loading || !input.trim()"
-            color="#1989fa"
-            size="small"
-            round
-            @click="sendMessage(input)"
-          />
-        </template>
-      </van-field>
+      <!-- 已上传文件列表 -->
+      <div v-if="uploadedFiles.length > 0" class="chat-file-list">
+        <div v-for="(f, i) in uploadedFiles" :key="f.file_id" class="chat-file-tag">
+          <span>📄 {{ f.name }}</span>
+          <van-icon name="close" size="14" @click="removeFile(i)" style="margin-left:4px;flex-shrink:0" />
+        </div>
+      </div>
+
+      <div class="chat-input-row">
+        <!-- 文件上传按钮 -->
+        <van-icon
+          name="add-o"
+          size="22"
+          color="#1989fa"
+          class="chat-upload-btn"
+          :class="{ disabled: loading || uploading }"
+          @click="triggerFileUpload"
+        />
+        <input
+          ref="fileInputRef"
+          type="file"
+          multiple
+          style="display:none"
+          @change="onFileSelect"
+          accept=".txt,.py,.js,.ts,.vue,.css,.html,.json,.yaml,.yml,.md,.csv,.xml,.sql,.sh,.toml,.ini,.cfg,.log,.env,.pdf,.docx,.xlsx,.xls,.go,.rs,.java,.c,.cpp,.h,.hpp,.rb,.php,.kt,.gradle,.proto,.graphql"
+        />
+
+        <van-field
+          v-model="input"
+          type="textarea"
+          :autosize="{ minHeight: 44, maxHeight: 100 }"
+          :placeholder="uploadedFiles.length > 0 ? '输入关于这些文件的问题...' : '输入你的问题...'"
+          :disabled="loading || uploading"
+          @keypress.enter.exact.prevent="sendMessage(input)"
+        >
+          <template #button>
+            <van-button
+              :icon="loading ? 'loading' : 'send'"
+              :disabled="loading || uploading || !input.trim()"
+              color="#1989fa"
+              size="small"
+              round
+              @click="sendMessage(input)"
+            />
+          </template>
+        </van-field>
+      </div>
     </div>
   </div>
 </template>
@@ -102,10 +139,13 @@ const messages = ref([])
 const streaming = ref('')
 const loading = ref(false)
 const lastCost = ref(0)
+const uploadedFiles = ref([])
+const uploading = ref(false)
 const messagesRef = ref(null)
 const scrollEnd = ref(null)
+const fileInputRef = ref(null)
 
-const BASE_URL = ''  // same origin
+const BASE_URL = ''
 
 const exampleQuestions = [
   '帮我看看今天消耗了多少Token',
@@ -118,20 +158,15 @@ function getToken() {
   return localStorage.getItem('token') || ''
 }
 
-// 简单的 Markdown 渲染（纯文本 + 换行 + 代码块）
 function renderContent(text) {
   if (!text) return ''
   let html = text
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
-    // 代码块 (```code```)
     .replace(/```(\w*)\n?([\s\S]*?)```/g, '<pre style="background:#f5f5f5;padding:8px;border-radius:6px;overflow-x:auto;font-size:12px;margin:4px 0"><code>$2</code></pre>')
-    // 行内代码 (`code`)
     .replace(/`([^`]+)`/g, '<code style="background:#f0f0f0;padding:1px 4px;border-radius:3px;font-size:12px">$1</code>')
-    // 加粗 **text**
     .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
-    // 换行
     .replace(/\n/g, '<br>')
   return html
 }
@@ -144,6 +179,59 @@ function scrollToBottom() {
 
 watch([messages, streaming], scrollToBottom)
 
+function triggerFileUpload() {
+  if (loading.value || uploading.value) return
+  fileInputRef.value?.click()
+}
+
+async function onFileSelect(e) {
+  const files = e.target.files
+  if (!files || files.length === 0) return
+
+  uploading.value = true
+  const token = getToken()
+
+  for (const file of files) {
+    const formData = new FormData()
+    formData.append('file', file)
+
+    try {
+      const res = await fetch(`${BASE_URL}/api/chat/upload`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` },
+        body: formData,
+      })
+      if (!res.ok) {
+        const err = await res.json()
+        showToast(err.detail || '上传失败')
+        continue
+      }
+      const data = await res.json()
+      uploadedFiles.value.push({
+        file_id: data.file_id,
+        name: data.name,
+        type: data.type,
+        size: data.size,
+      })
+      showToast(`✅ ${data.name}`)
+    } catch (err) {
+      showToast(err.message)
+    }
+  }
+  uploading.value = false
+  e.target.value = ''
+}
+
+function removeFile(index) {
+  uploadedFiles.value.splice(index, 1)
+}
+
+function fmtSize(bytes) {
+  if (bytes < 1024) return `${bytes}B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)}KB`
+  return `${(bytes / 1024 / 1024).toFixed(1)}MB`
+}
+
 async function sendMessage(text) {
   if (!text?.trim() || loading.value) return
   const msgText = text
@@ -152,7 +240,8 @@ async function sendMessage(text) {
   streaming.value = ''
   lastCost.value = 0
 
-  messages.value.push({ role: 'user', content: msgText })
+  const files = [...uploadedFiles.value]
+  messages.value.push({ role: 'user', content: msgText, files })
 
   const history = messages.value
     .filter(m => m.content !== msgText)
@@ -160,13 +249,18 @@ async function sendMessage(text) {
 
   try {
     const token = getToken()
+    const body = { message: msgText, history }
+    if (files.length > 0) {
+      body.files = files.map(f => ({ file_id: f.file_id, name: f.name }))
+    }
+
     const res = await fetch(`${BASE_URL}/api/chat/stream`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${token}`,
       },
-      body: JSON.stringify({ message: msgText, history }),
+      body: JSON.stringify(body),
     })
 
     if (!res.ok) {
@@ -176,7 +270,7 @@ async function sendMessage(text) {
     const reader = res.body.getReader()
     const decoder = new TextDecoder()
     let fullText = ''
-    let buffer = ''  // SSE 行缓冲
+    let buffer = ''
 
     while (true) {
       const { done, value } = await reader.read()
@@ -200,19 +294,22 @@ async function sendMessage(text) {
               lastCost.value = data.cost || 0
               messages.value.push({ role: 'assistant', content: data.content })
               streaming.value = ''
+              // 发送完后不清除文件
               break
             case 'error':
               streaming.value = (streaming.value || '') + `\n\n⚠️ ${data.message}`
               break
           }
-        } catch (e) {}
+        } catch (e) {
+          // ignore
+        }
       }
     }
   } catch (err) {
-    streaming.value = `\n\n❌ 请求失败: ${err.message}`
+    showToast(err.message)
   } finally {
     loading.value = false
-    setTimeout(() => { streaming.value = '' }, 500)
+    streaming.value = ''
   }
 }
 
@@ -220,6 +317,7 @@ function clearChat() {
   messages.value = []
   streaming.value = ''
   lastCost.value = 0
+  uploadedFiles.value = []
 }
 </script>
 
@@ -227,17 +325,20 @@ function clearChat() {
 .chat-page {
   display: flex;
   flex-direction: column;
-  height: calc(100vh - 46px - 50px); /* minus nav-bar and tabbar */
+  height: 100vh;
+  background: #f7f8fa;
 }
 
 .chat-header {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 10px 16px;
+  padding: 12px 16px;
   background: #fff;
   border-bottom: 1px solid #eee;
+  gap: 8px;
+  flex-shrink: 0;
 }
+
 .chat-title {
   font-size: 16px;
   font-weight: 600;
@@ -247,59 +348,112 @@ function clearChat() {
   flex: 1;
   overflow-y: auto;
   padding: 12px 16px;
-  background: #f7f8fa;
+  -webkit-overflow-scrolling: touch;
 }
 
 .chat-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 60vh;
+  padding: 20px;
   text-align: center;
-  padding: 40px 16px;
 }
 
 .msg-row {
   margin-bottom: 16px;
 }
+
+.msg-user {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+}
+
+.msg-ai {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+
 .msg-label {
   font-size: 12px;
   color: #999;
   margin-bottom: 4px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
 }
-.msg-user .msg-label {
-  text-align: right;
-}
+
 .msg-bubble {
   max-width: 85%;
-  padding: 10px 12px;
-  border-radius: 10px;
+  padding: 10px 14px;
+  border-radius: 12px;
   font-size: 14px;
   line-height: 1.6;
-  white-space: pre-wrap;
   word-break: break-word;
+  white-space: pre-wrap;
 }
-.msg-user {
-  text-align: right;
-}
+
 .msg-user .msg-bubble {
   background: #1989fa;
   color: #fff;
-  margin-left: auto;
-  border-bottom-right-radius: 2px;
+  border-bottom-right-radius: 4px;
 }
+
 .msg-ai .msg-bubble {
   background: #fff;
   color: #333;
-  margin-right: auto;
-  border-bottom-left-radius: 2px;
+  border-bottom-left-radius: 4px;
   box-shadow: 0 1px 3px rgba(0,0,0,0.08);
-}
-.msg-ai .msg-bubble :deep(pre) {
-  background: #f5f5f5 !important;
-  border-radius: 6px;
-  overflow-x: auto;
 }
 
 .chat-input {
   background: #fff;
   border-top: 1px solid #eee;
-  padding: 4px 0;
+  flex-shrink: 0;
+}
+
+.chat-file-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 8px 12px 0;
+}
+
+.chat-file-tag {
+  display: inline-flex;
+  align-items: center;
+  background: #e8f4fd;
+  border: 1px solid #b3d8f0;
+  border-radius: 16px;
+  padding: 3px 8px;
+  font-size: 12px;
+  color: #1989fa;
+  gap: 2px;
+}
+
+.chat-input-row {
+  display: flex;
+  align-items: flex-end;
+  padding: 8px 12px;
+  gap: 8px;
+}
+
+.chat-upload-btn {
+  margin-bottom: 8px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.chat-upload-btn.disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.chat-input-row :deep(.van-field) {
+  flex: 1;
+  padding: 0;
 }
 </style>
