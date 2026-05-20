@@ -212,18 +212,23 @@ async def chat_stream(
 @router.get("/health")
 async def chat_health(user=Depends(get_current_user)):
     """健康检查 — 检测后台是否在线"""
+    import shutil
+    if not shutil.which(CLAUDE_BIN):
+        return JSONResponse({"status": "down", "claude": False, "error": "claude 命令不存在"})
     try:
+        # 轻量检查：只跑 --version，不走完整 agent 循环
         result = subprocess.run(
-            [CLAUDE_BIN, "--bare", "-p", "echo ok", "--output-format", "stream-json"],
+            [CLAUDE_BIN, "--version"],
             capture_output=True,
             text=True,
-            timeout=30,
+            timeout=10,
             env=CLAUDE_ENV,
         )
-        ok = "ok" in result.stdout.lower() or result.returncode == 0
+        ok = result.returncode == 0 and "claude" in result.stdout.lower()
         return JSONResponse({
             "status": "ok" if ok else "degraded",
             "claude": ok,
+            "version": result.stdout.strip() if ok else None,
             "error": result.stderr[:200] if not ok else None,
         })
     except FileNotFoundError:

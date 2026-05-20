@@ -53,6 +53,7 @@ export default function Chat() {
   const fileInputRef = useRef(null)
 
   const STORAGE_KEY = 'admin_chat_messages'
+  const saveTimerRef = useRef(null)
 
   /** 从 localStorage 加载 */
   const loadFromStorage = useCallback(() => {
@@ -71,6 +72,28 @@ export default function Chat() {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(msgs))
     } catch {}
   }, [])
+
+  /** 同步到后端（防抖） */
+  const syncToBackend = useCallback((msgs) => {
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
+    saveTimerRef.current = setTimeout(() => {
+      const token = getToken()
+      if (!token || msgs.length === 0) return
+      fetch('/api/chat/history', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({ messages: msgs }),
+      }).catch(() => {})
+    }, 1000)
+  }, [])
+
+  /** 消息变化时自动保存 */
+  useEffect(() => {
+    if (messages.length > 0) {
+      saveToStorage(messages)
+      syncToBackend(messages)
+    }
+  }, [messages, saveToStorage, syncToBackend])
 
   /** 加载历史 + 健康检查 */
   useEffect(() => {
@@ -226,21 +249,7 @@ export default function Chat() {
                   tokensOutput: data.tokens_output,
                   duration: data.duration_ms,
                 })
-                setMessages((prev) => {
-                  const next = [...prev, { role: 'assistant', content: data.content }]
-                  // 保存到 localStorage
-                  try { localStorage.setItem('admin_chat_messages', JSON.stringify(next)) } catch {}
-                  // 同步到后端
-                  const token = getToken()
-                  if (token) {
-                    fetch('/api/chat/history', {
-                      method: 'POST',
-                      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-                      body: JSON.stringify({ messages: next }),
-                    }).catch(() => {})
-                  }
-                  return next
-                })
+                setMessages((prev) => [...prev, { role: 'assistant', content: data.content }])
                 setStreamingText('')
                 break
               case 'error':
