@@ -10,8 +10,9 @@ import subprocess
 import time
 import zipfile
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File
 from fastapi.responses import StreamingResponse, JSONResponse
+from pathlib import Path
 from pydantic import BaseModel
 
 from app.core.deps import get_current_user
@@ -72,9 +73,17 @@ def _get_changed_files() -> list[dict]:
         return []
 
 
+class FileInfo(BaseModel):
+    file_id: str = ""
+    name: str = ""
+    type: str = ""
+    size: int = 0
+
+
 class ChatRequest(BaseModel):
     message: str
     history: list[dict] | None = None
+    files: list[FileInfo] | None = None
 
 
 class SaveHistoryRequest(BaseModel):
@@ -87,13 +96,26 @@ class DownloadRequest(BaseModel):
     """要下载的文件路径列表"""
 
 
-def build_prompt(message: str, history: list[dict] | None) -> str:
-    if not history:
-        return message
+def build_prompt(message: str, history: list[dict] | None, files: list[FileInfo] | None = None) -> str:
     parts = []
-    for msg in history:
-        role = "User" if msg["role"] == "user" else "Assistant"
-        parts.append(f"{role}: {msg['content']}")
+    # 如果有上传的文件，在前面附上文件内容
+    if files:
+        parts.append("<上传的文件>")
+        for f in files:
+            # 从 uploads 目录读取文件内容
+            fpath = f"/root/uploads/{f.name}"
+            if os.path.isfile(fpath):
+                try:
+                    with open(fpath, "r", encoding="utf-8", errors="replace") as fh:
+                        content = fh.read(5000)  # 限制读取前5000字符
+                    parts.append(f"--- {f.name} ({f.type}) ---\n{content}\n---")
+                except Exception:
+                    parts.append(f"--- {f.name} ---\n(无法读取文件内容)")
+        parts.append("</上传的文件>")
+    if history:
+        for msg in history:
+            role = "User" if msg["role"] == "user" else "Assistant"
+            parts.append(f"{role}: {msg['content']}")
     parts.append(f"User: {message}")
     return "\n\n".join(parts)
 
@@ -130,7 +152,7 @@ async def chat_stream(
 ):
     async def event_stream():
         start_time = time.time()
-        prompt = build_prompt(req.message, req.history)
+        prompt = build_prompt(req.message, req.history, req.files)
         yield f"data: {json.dumps({'type': 'start'})}\n\n"
 
         collected_text = ""
@@ -336,6 +358,57 @@ async def download_files(req: DownloadRequest, user=Depends(get_current_user)):
             "Content-Disposition": f"attachment; filename=claude-output-{int(time.time())}.zip",
         },
     )
+
+
+@router.post("/upload")
+async def chat_upload(
+    file: UploadFile = File(...),
+    user=Depends(get_current_user),
+):
+    """上传文件给 Claude Code 使用"""
+    UPLOAD_DIR = Path("/root/uploads")
+    UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+
+    max_size = 500 * 1024 * 1024
+    safe_filename = os.path.basename(file.filename or "uploaded_file")
+    file_path = UPLOAD_DIR / safe_filename
+
+    import aiofiles
+    written = 0
+    async with aiofiles.open(str(file_path), "wb") as f:
+        while True:
+            chunk = await file.read(8 * 1024 * 1024)
+            if not chunk:
+                break
+            written += len(chunk)
+            if written > max_size:
+                await f.close()
+                file_path.unlink(missing_ok=True)
+                raise HTTPException(status_code=413, detail="文件超过500MB上限")
+            await f.write(chunk)
+
+    # 检测文件类型
+    ext = os.path.splitext(safe_filename)[1].lower()
+    type_map = {
+        ".txt": "text", ".py": "code", ".js": "code", ".ts": "code",
+        ".jsx": "code", ".tsx": "code", ".vue": "code", ".css": "code",
+        ".html": "code", ".json": "code", ".yaml": "code", ".yml": "code",
+        ".md": "text", ".csv": "text", ".xml": "code", ".sql": "code",
+        ".sh": "code", ".toml": "code", ".ini": "code", ".log": "text",
+        ".env": "text", ".pdf": "pdf", ".docx": "docx", ".xlsx": "excel",
+        ".go": "code", ".rs": "code", ".java": "code", ".c": "code",
+        ".cpp": "code", ".h": "code", ".hpp": "code", ".rb": "code",
+        ".php": "code", ".kt": "code", ".gradle": "code", ".proto": "code",
+        ".graphql": "code",
+    }
+    file_type = type_map.get(ext, "other")
+
+    return {
+        "file_id": f"chat_{int(time.time())}_{hash(safe_filename) % 100000}",
+        "name": safe_filename,
+        "type": file_type,
+        "size": written,
+    }
 
 
 @router.get("/health")
