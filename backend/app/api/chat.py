@@ -170,14 +170,6 @@ def _save_stream_progress(user_id: int, collected_text: str, event_count: int,
     except Exception:
         pass  # Redis 不可用不影响主流程
 
-def _clear_stream_progress(user_id: int):
-    """清除流进度缓存"""
-    try:
-        r = get_redis()
-        r.delete(_stream_cache_key(user_id))
-    except Exception:
-        pass
-
 
 @router.post("/stream")
 async def chat_stream(
