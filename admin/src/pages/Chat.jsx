@@ -254,7 +254,8 @@ export default function Chat() {
                 const label = cmd
                   ? `$ ${cmd}`
                   : `[使用工具: ${data.name}]`
-                setStreamingText((prev) => prev + `\n\n🔧 ${label}\n`)
+                fullText += `\n\n🔧 ${label}\n`
+                setStreamingText(fullText)
                 break
               }
               case 'tool_result': {
@@ -264,7 +265,8 @@ export default function Chat() {
                   ? lines.slice(0, 8).join('\n') + `\n... (${lines.length} lines)`
                   : data.content
                 const cmdLine = data.command ? `$ ${data.command}` : ''
-                setStreamingText((prev) => prev + `\n${icon} ${cmdLine || data.tool_name}\n\`\`\`\n${preview}\n\`\`\`\n`)
+                fullText += `\n${icon} ${cmdLine || data.tool_name}\n\`\`\`\n${preview}\n\`\`\`\n`
+                setStreamingText(fullText)
                 break
               }
               case 'done':
