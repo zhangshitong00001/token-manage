@@ -7,7 +7,7 @@ import {
   SendOutlined, RobotOutlined, UserOutlined,
   DeleteOutlined, ClearOutlined, DollarOutlined,
   ClockCircleOutlined, PaperClipOutlined, FileTextOutlined,
-  CloseOutlined,
+  DownloadOutlined, CloseOutlined,
 } from '@ant-design/icons'
 import api from '../api'
 
@@ -262,7 +262,11 @@ export default function Chat() {
                   tokensOutput: data.tokens_output,
                   duration: data.duration_ms,
                 })
-                setMessages((prev) => [...prev, { role: 'assistant', content: data.content }])
+                const assistantMsg = { role: 'assistant', content: data.content }
+                if (data.changed_files?.length > 0) {
+                  assistantMsg.changed_files = data.changed_files
+                }
+                setMessages((prev) => [...prev, assistantMsg])
                 setStreamingText('')
                 break
               case 'error':
@@ -290,6 +294,30 @@ export default function Chat() {
     setCurrentCost(null)
     setUploadedFiles([])
     saveToStorage([])
+  }
+
+  /** 下载变更文件 */
+  const downloadFiles = async (files) => {
+    const token = getToken()
+    if (!token || !files?.length) return
+    try {
+      const res = await fetch('/api/chat/download', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({ files }),
+      })
+      if (!res.ok) { message.error('下载失败'); return }
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `claude-output-${Date.now()}.zip`
+      a.click()
+      URL.revokeObjectURL(url)
+      message.success(`已下载 ${files.length} 个文件`)
+    } catch (err) {
+      message.error(`下载失败: ${err.message}`)
+    }
   }
 
   const handleKeyDown = (e) => {
@@ -413,6 +441,30 @@ export default function Chat() {
                 </div>
               )}
               <div>{msg.content}</div>
+              {/* 变更文件下载 */}
+              {msg.changed_files && msg.changed_files.length > 0 && (
+                <div style={{ marginTop: 8, borderTop: '1px solid #e8e8e8', paddingTop: 8 }}>
+                  <div style={{ fontSize: 12, color: '#666', marginBottom: 4 }}>
+                    📁 本次变更文件（{msg.changed_files.length}个）
+                  </div>
+                  <Space wrap size={2}>
+                    {msg.changed_files.map((f, fi) => (
+                      <Tag key={fi} style={{ fontSize: 11, maxWidth: 200 }}>{f}</Tag>
+                    ))}
+                  </Space>
+                  <div style={{ marginTop: 6 }}>
+                    <Button
+                      size="small"
+                      icon={<DownloadOutlined />}
+                      type="primary"
+                      ghost
+                      onClick={() => downloadFiles(msg.changed_files)}
+                    >
+                      打包下载所有文件
+                    </Button>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         ))}

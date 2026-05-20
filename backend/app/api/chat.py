@@ -1,13 +1,16 @@
 """Claude Chat - SSE 流式聊天接口（Claude Code Agent 后端）"""
 
 import asyncio
+import io
 import json
 import os
 import re
+import shutil
 import subprocess
 import time
+import zipfile
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse, JSONResponse
 from pydantic import BaseModel
 
@@ -22,6 +25,8 @@ CLAUDE_ENV = {
     "ANTHROPIC_API_KEY": open("/root/.deepseek_key").read().strip(),
 }
 CLAUDE_BIN = "/usr/bin/claude"
+WORK_DIR = "/root/TokenManager"  # Claude Code 工作目录
+
 
 # --- Helper: 从 tool_result content 提取纯文本 ---
 def _extract_text(content) -> str:
@@ -38,6 +43,35 @@ def _extract_text(content) -> str:
     return str(content or "")
 
 
+def _get_changed_files() -> list[dict]:
+    """获取工作目录中当前变更的文件列表"""
+    try:
+        # 已暂存的变更
+        staged = subprocess.run(
+            ["git", "diff", "--cached", "--name-only"],
+            capture_output=True, text=True, timeout=10, cwd=WORK_DIR,
+        )
+        # 未暂存的变更（包括新增未跟踪文件）
+        unstaged = subprocess.run(
+            ["git", "diff", "--name-only"],
+            capture_output=True, text=True, timeout=10, cwd=WORK_DIR,
+        )
+        # 新增的未跟踪文件
+        untracked = subprocess.run(
+            ["git", "ls-files", "--others", "--exclude-standard"],
+            capture_output=True, text=True, timeout=10, cwd=WORK_DIR,
+        )
+        files = set()
+        for out in [staged.stdout, unstaged.stdout, untracked.stdout]:
+            for f in out.strip().split("\n"):
+                f = f.strip()
+                if f and not f.startswith("."):
+                    files.add(f)
+        return sorted(files)
+    except Exception:
+        return []
+
+
 class ChatRequest(BaseModel):
     message: str
     history: list[dict] | None = None
@@ -46,6 +80,11 @@ class ChatRequest(BaseModel):
 class SaveHistoryRequest(BaseModel):
     messages: list[dict]
     """[{role: 'user'|'assistant', content: '...'}, ...]"""
+
+
+class DownloadRequest(BaseModel):
+    files: list[str]
+    """要下载的文件路径列表"""
 
 
 def build_prompt(message: str, history: list[dict] | None) -> str:
@@ -95,7 +134,7 @@ async def chat_stream(
         yield f"data: {json.dumps({'type': 'start'})}\n\n"
 
         collected_text = ""
-        current_tool_use = {"name": "", "command": ""}  # 最近一次工具调用的命令
+        current_tool_use = {"name": "", "command": ""}
         error_occurred = False
 
         try:
@@ -109,10 +148,9 @@ async def chat_stream(
                 stderr=asyncio.subprocess.PIPE,
                 stdin=asyncio.subprocess.DEVNULL,
                 env=CLAUDE_ENV,
-                cwd="/root/TokenManager",
+                cwd=WORK_DIR,
             )
 
-            # 后台消费 stderr
             stderr_task = asyncio.create_task(_drain_stderr(proc.stderr))
 
             while True:
@@ -126,7 +164,7 @@ async def chat_stream(
 
                 raw_line = await asyncio.wait_for(proc.stdout.readline(), timeout=60.0)
                 if not raw_line:
-                    break  # stdout 关闭，进程结束
+                    break
 
                 line = raw_line.decode("utf-8", errors="replace").strip()
                 if not line:
@@ -171,13 +209,12 @@ async def chat_stream(
                     inp_preview = json.dumps(inp, ensure_ascii=False)[:300]
                     yield f"data: {json.dumps({'type': 'tool_use', 'name': name, 'input': inp, 'input_preview': inp_preview})}\n\n"
 
-                # ========== user（包含 tool_result，当前最缺失的部分） ==========
+                # ========== user（包含 tool_result） ==========
                 elif et == "user":
                     for block in data.get("message", {}).get("content", []):
                         if block.get("type") == "tool_result":
                             is_error = block.get("is_error", False)
                             content = _extract_text(block.get("content", ""))
-                            # 截断超大输出，避免SSE推送过大
                             content_lines = content.split("\n")
                             if len(content_lines) > 50:
                                 content = "\n".join(content_lines[:50]) + f"\n... (truncated, {len(content_lines)} total lines)"
@@ -199,7 +236,6 @@ async def chat_stream(
                     content = _extract_text(data.get("content", ""))
                     is_error = data.get("is_error", False)
                     if content:
-                        # 截断超大输出
                         content_lines = content.split("\n")
                         if len(content_lines) > 50:
                             content = "\n".join(content_lines[:50]) + f"\n... (truncated, {len(content_lines)} total lines)"
@@ -228,17 +264,21 @@ async def chat_stream(
                             collected_text = content
                             yield f"data: {json.dumps({'type': 'text', 'content': chunk})}\n\n"
 
+                    # 获取本次变更的文件列表
+                    changed_files = _get_changed_files()
+
                     elapsed = time.time() - start_time
                     yield f"data: {json.dumps({
                         'type': 'done',
                         'content': collected_text,
+                        'changed_files': changed_files,
                         'cost': data.get('total_cost_usd', 0),
                         'tokens_input': data.get('usage', {}).get('input_tokens', 0),
                         'tokens_output': data.get('usage', {}).get('output_tokens', 0),
                         'duration_ms': int(elapsed * 1000),
                     })}\n\n"
-                    error_occurred = True  # 防止再发一次 done
-                    return  # 结束流
+                    error_occurred = True
+                    return
 
             stderr_task.cancel()
             await proc.wait()
@@ -255,8 +295,9 @@ async def chat_stream(
             error_occurred = True
 
         if not error_occurred and collected_text:
+            changed_files = _get_changed_files()
             elapsed = time.time() - start_time
-            yield f"data: {json.dumps({'type': 'done', 'content': collected_text, 'cost': 0, 'tokens_input': 0, 'tokens_output': 0, 'duration_ms': int(elapsed * 1000)})}\n\n"
+            yield f"data: {json.dumps({'type': 'done', 'content': collected_text, 'changed_files': changed_files, 'cost': 0, 'tokens_input': 0, 'tokens_output': 0, 'duration_ms': int(elapsed * 1000)})}\n\n"
 
     return StreamingResponse(
         event_stream(),
@@ -270,19 +311,42 @@ async def chat_stream(
     )
 
 
+@router.post("/download")
+async def download_files(req: DownloadRequest, user=Depends(get_current_user)):
+    """下载指定文件（打包为 zip）"""
+    if not req.files:
+        raise HTTPException(400, "请指定要下载的文件")
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        for file_path in req.files:
+            # 安全校验：防止路径穿越
+            abs_path = os.path.normpath(os.path.join(WORK_DIR, file_path))
+            if not abs_path.startswith(os.path.normpath(WORK_DIR)):
+                continue
+            if not os.path.isfile(abs_path):
+                continue
+            zf.write(abs_path, file_path)
+
+    buf.seek(0)
+    return StreamingResponse(
+        buf,
+        media_type="application/zip",
+        headers={
+            "Content-Disposition": f"attachment; filename=claude-output-{int(time.time())}.zip",
+        },
+    )
+
+
 @router.get("/health")
 async def chat_health(user=Depends(get_current_user)):
     """健康检查 — 检测后台是否在线"""
-    import shutil
     if not shutil.which(CLAUDE_BIN):
         return JSONResponse({"status": "down", "claude": False, "error": "claude 命令不存在"})
     try:
         result = subprocess.run(
             [CLAUDE_BIN, "--version"],
-            capture_output=True,
-            text=True,
-            timeout=10,
-            env=CLAUDE_ENV,
+            capture_output=True, text=True, timeout=10, env=CLAUDE_ENV,
         )
         ok = result.returncode == 0 and "claude" in result.stdout.lower()
         return JSONResponse({

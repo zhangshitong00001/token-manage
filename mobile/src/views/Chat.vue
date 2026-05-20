@@ -68,6 +68,24 @@
           </van-tag>
         </div>
         <div class="msg-bubble" v-html="renderContent(msg.content)" />
+        <!-- 变更文件下载 -->
+        <div v-if="msg.changed_files && msg.changed_files.length > 0" class="msg-download">
+          <div class="msg-download-title">📁 本次变更（{{ msg.changed_files.length }}个文件）</div>
+          <div class="msg-download-files">
+            <van-tag v-for="(f, fi) in msg.changed_files" :key="fi" plain size="small" style="margin:2px;max-width:240px;overflow:hidden;text-overflow:ellipsis">
+              {{ f }}
+            </van-tag>
+          </div>
+          <van-button
+            size="small"
+            plain
+            type="primary"
+            icon="down"
+            @click="downloadFiles(msg.changed_files)"
+          >
+            打包下载
+          </van-button>
+        </div>
       </div>
 
       <!-- 流式输出 -->
@@ -395,6 +413,33 @@ function newChat() {
   })
 }
 
+/** 下载变更文件 */
+async function downloadFiles(files) {
+  const token = getToken()
+  if (!token || !files?.length) return
+  try {
+    const res = await fetch(`${BASE_URL}/api/chat/download`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+      },
+      body: JSON.stringify({ files }),
+    })
+    if (!res.ok) { showToast('下载失败'); return }
+    const blob = await res.blob()
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `claude-output-${Date.now()}.zip`
+    a.click()
+    URL.revokeObjectURL(url)
+    showToast(`✅ 已下载 ${files.length} 个文件`)
+  } catch (err) {
+    showToast(`下载失败: ${err.message}`)
+  }
+}
+
 async function sendMessage(text) {
   if (!text?.trim() || loading.value) return
   const msgText = text
@@ -473,7 +518,11 @@ async function sendMessage(text) {
             }
             case 'done':
               lastCost.value = data.cost || 0
-              messages.value.push({ role: 'assistant', content: data.content })
+              const aiMsg = { role: 'assistant', content: data.content }
+              if (data.changed_files?.length > 0) {
+                aiMsg.changed_files = data.changed_files
+              }
+              messages.value.push(aiMsg)
               streaming.value = ''
               break
             case 'error':
@@ -580,6 +629,23 @@ async function sendMessage(text) {
   color: #333;
   border-bottom-left-radius: 4px;
   box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+}
+
+.msg-download {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid #eee;
+}
+.msg-download-title {
+  font-size: 11px;
+  color: #666;
+  margin-bottom: 4px;
+}
+.msg-download-files {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  margin-bottom: 6px;
 }
 
 .chat-input {
