@@ -21,6 +21,8 @@ from app.schemas import (
     SystemUsageSync,
 )
 from app.core.deps import get_admin_user
+from app.core.rate_limiter import api_rate_limit
+from app.core.security import force_logout_user
 router = APIRouter(prefix="/api/admin", tags=["管理后台"])
 
 
@@ -185,6 +187,21 @@ def list_orders(
 def admin_ping(admin: User = Depends(get_admin_user)):
     """管理后台心跳，刷新10分钟会话"""
     return {"status": "ok", "ts": __import__("datetime").datetime.now().isoformat()}
+
+
+# ---- 安全：强制踢下线（所有设备） ----
+
+@router.post("/force-logout")
+def admin_force_logout(
+    _: None = Depends(api_rate_limit(3, 60)),  # 每分钟最多3次
+    admin: User = Depends(get_admin_user),
+):
+    """
+    强制所有设备下线（Token 黑名单 + Redis 会话清理）
+    用户所有已登录的设备会在下次请求时被踢出，需要重新登录
+    """
+    force_logout_user(admin.id)
+    return {"message": "已强制所有设备下线，请重新登录"}
 
 
 # ---- 消耗记录查询 ----

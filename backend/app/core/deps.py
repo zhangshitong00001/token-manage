@@ -5,7 +5,9 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.core.security import decode_access_token
+from app.core.security import is_token_blacklisted, is_user_force_logged_out
 from app.core.redis_client import refresh_admin_session, has_admin_session
+from app.core.rate_limiter import check_rate_limit
 from app.models import User
 
 bearer_scheme = HTTPBearer(auto_error=False)
@@ -27,6 +29,11 @@ def get_current_user(
 
     if not token:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="未登录")
+
+    # 检查 Token 是否被主动踢下线（黑名单）
+    if is_token_blacklisted(token):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="登录已过期，请重新登录")
+
     try:
         payload = decode_access_token(token)
         user_id = payload.get("sub")
@@ -41,9 +48,28 @@ def get_current_user(
 
 
 def get_admin_user(current_user: User = Depends(get_current_user)) -> User:
-    """验证管理员权限 + Redis 会话活跃检查"""
+    """验证管理员权限 + Redis 会话活跃检查 + 限流"""
     if current_user.role != "admin":
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="需要管理员权限")
+
+    # API 限流：每个 admin 用户每分钟最多 60 次请求
+    allowed, remaining = check_rate_limit(
+        f"admin_api:user:{current_user.id}",
+        max_attempts=60,
+        window_seconds=60,
+    )
+    if not allowed:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="请求过于频繁，请稍后再试",
+        )
+
+    # 检查用户是否被强制踢下线
+    if is_user_force_logged_out(current_user.id):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="登录已过期，请重新登录",
+        )
 
     # 检查 Redis 会话是否活跃（10分钟无操作过期）
     if not has_admin_session(current_user.id):
