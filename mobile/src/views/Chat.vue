@@ -453,6 +453,24 @@ async function sendMessage(text) {
               fullText += data.content
               streaming.value = fullText
               break
+            case 'tool_use': {
+              const cmd = data.input?.command || ''
+              const label = cmd ? `$ ${cmd}` : `[使用工具: ${data.name}]`
+              fullText += `\n\n🔧 ${label}\n`
+              streaming.value = fullText
+              break
+            }
+            case 'tool_result': {
+              const icon = data.is_error ? '❌' : '📋'
+              const lines = (data.content || '').split('\n')
+              const preview = lines.length > 6
+                ? lines.slice(0, 6).join('\n') + `\n... (${lines.length} lines)`
+                : data.content
+              const cmdLine = data.command ? `$ ${data.command}` : ''
+              fullText += `\n${icon} ${cmdLine || data.tool_name}\n\`\`\`\n${preview}\n\`\`\`\n`
+              streaming.value = fullText
+              break
+            }
             case 'done':
               lastCost.value = data.cost || 0
               messages.value.push({ role: 'assistant', content: data.content })

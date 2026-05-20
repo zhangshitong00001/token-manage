@@ -3,6 +3,7 @@
 import asyncio
 import json
 import os
+import re
 import subprocess
 import time
 
@@ -21,6 +22,20 @@ CLAUDE_ENV = {
     "ANTHROPIC_API_KEY": open("/root/.deepseek_key").read().strip(),
 }
 CLAUDE_BIN = "/usr/bin/claude"
+
+# --- Helper: 从 tool_result content 提取纯文本 ---
+def _extract_text(content) -> str:
+    """统一提取 content 字段中的文本（可能是字符串或 list[block]）"""
+    if isinstance(content, list):
+        parts = []
+        for b in content:
+            if isinstance(b, dict):
+                if b.get("type") == "text":
+                    parts.append(b.get("text", ""))
+                elif b.get("type") == "tool_result":
+                    parts.append(_extract_text(b.get("content", "")))
+        return "\n".join(parts)
+    return str(content or "")
 
 
 class ChatRequest(BaseModel):
@@ -52,6 +67,23 @@ async def _drain_stderr(stderr: asyncio.StreamReader):
             break
 
 
+def _split_stream_chunks(text: str) -> list[str]:
+    """把一段文本拆成3-5字的小块用于流式推送"""
+    pieces = []
+    for sentence in re.split(r'(?<=[。！？.!?\n])', text):
+        if not sentence:
+            continue
+        if len(sentence) > 10:
+            step = max(1, min(5, len(sentence) // 3))
+            for i in range(0, len(sentence), step):
+                sub = sentence[i:i + step]
+                if sub:
+                    pieces.append(sub)
+        else:
+            pieces.append(sentence)
+    return pieces
+
+
 @router.post("/stream")
 async def chat_stream(
     req: ChatRequest,
@@ -63,7 +95,7 @@ async def chat_stream(
         yield f"data: {json.dumps({'type': 'start'})}\n\n"
 
         collected_text = ""
-        current_tool_name = ""
+        current_tool_use = {"name": "", "command": ""}  # 最近一次工具调用的命令
         error_occurred = False
 
         try:
@@ -80,7 +112,7 @@ async def chat_stream(
                 cwd="/root/TokenManager",
             )
 
-            # 后台消费 stderr（防止管道阻塞）
+            # 后台消费 stderr
             stderr_task = asyncio.create_task(_drain_stderr(proc.stderr))
 
             while True:
@@ -94,8 +126,7 @@ async def chat_stream(
 
                 raw_line = await asyncio.wait_for(proc.stdout.readline(), timeout=60.0)
                 if not raw_line:
-                    # stdout 关闭，进程结束
-                    break
+                    break  # stdout 关闭，进程结束
 
                 line = raw_line.decode("utf-8", errors="replace").strip()
                 if not line:
@@ -110,6 +141,7 @@ async def chat_stream(
                 if et == "system":
                     continue
 
+                # ========== assistant ==========
                 if et == "assistant":
                     for block in data.get("message", {}).get("content", []):
                         bt = block.get("type")
@@ -118,49 +150,78 @@ async def chat_stream(
                             new_text = text[len(collected_text):]
                             if new_text:
                                 collected_text = text
-                                # 拆分成小块模拟流式输出（逐字效果）
-                                pieces = []
-                                # 先按句子/换行拆分
-                                import re as _re
-                                for sentence in _re.split(r'(?<=[。！？.!?\n])', new_text):
-                                    if not sentence:
-                                        continue
-                                    # 再拆成3-5字符小块模拟流式
-                                    if len(sentence) > 10:
-                                        step = max(1, min(5, len(sentence) // 3))
-                                        for i in range(0, len(sentence), step):
-                                            sub = sentence[i:i+step]
-                                            if sub:
-                                                pieces.append(sub)
-                                    else:
-                                        pieces.append(sentence)
-                                # 推送小块
-                                for piece in pieces:
+                                for piece in _split_stream_chunks(new_text):
                                     yield f"data: {json.dumps({'type': 'text', 'content': piece})}\n\n"
                                     await asyncio.sleep(0.015)
                         elif bt == "tool_use":
-                            current_tool_name = block.get("name", "")
-                            yield f"data: {json.dumps({'type': 'tool_use', 'name': current_tool_name, 'input': block.get('input', {})})}\n\n"
+                            name = block.get("name", "")
+                            inp = block.get("input", {})
+                            command = inp.get("command", "") if isinstance(inp, dict) else str(inp)
+                            current_tool_use = {"name": name, "command": command}
+                            inp_preview = json.dumps(inp, ensure_ascii=False)[:300]
+                            yield f"data: {json.dumps({'type': 'tool_use', 'name': name, 'input': inp, 'input_preview': inp_preview})}\n\n"
 
+                # ========== tool_use（独立事件） ==========
                 elif et == "tool_use":
                     tu = data.get("tool_use", {})
-                    current_tool_name = tu.get("name", "")
-                    yield f"data: {json.dumps({'type': 'tool_use', 'name': current_tool_name, 'input': tu.get('input', {})})}\n\n"
+                    name = tu.get("name", "")
+                    inp = tu.get("input", {})
+                    command = inp.get("command", "") if isinstance(inp, dict) else str(inp)
+                    current_tool_use = {"name": name, "command": command}
+                    inp_preview = json.dumps(inp, ensure_ascii=False)[:300]
+                    yield f"data: {json.dumps({'type': 'tool_use', 'name': name, 'input': inp, 'input_preview': inp_preview})}\n\n"
 
+                # ========== user（包含 tool_result，当前最缺失的部分） ==========
+                elif et == "user":
+                    for block in data.get("message", {}).get("content", []):
+                        if block.get("type") == "tool_result":
+                            is_error = block.get("is_error", False)
+                            content = _extract_text(block.get("content", ""))
+                            # 截断超大输出，避免SSE推送过大
+                            content_lines = content.split("\n")
+                            if len(content_lines) > 50:
+                                content = "\n".join(content_lines[:50]) + f"\n... (truncated, {len(content_lines)} total lines)"
+                            elif len(content) > 5000:
+                                content = content[:5000] + f"\n... (truncated, {len(content)} chars)"
+                            tool_use_id = block.get("tool_use_id", "")[:16]
+                            yield f"data: {json.dumps({
+                                'type': 'tool_result',
+                                'tool_name': current_tool_use['name'],
+                                'command': current_tool_use['command'],
+                                'is_error': is_error,
+                                'content': content,
+                                'tool_use_id': tool_use_id,
+                            })}\n\n"
+                            await asyncio.sleep(0.005)
+
+                # ========== tool_result（独立事件） ==========
                 elif et == "tool_result":
-                    content = data.get("content", "")
-                    if isinstance(content, list):
-                        content = "\n".join(b.get("text", "") for b in content if isinstance(b, dict) and b.get("type") == "text")
+                    content = _extract_text(data.get("content", ""))
+                    is_error = data.get("is_error", False)
                     if content:
-                        preview = content[:200]
-                        if len(content) > 200:
-                            preview += "..."
-                        yield f"data: {json.dumps({'type': 'tool_result', 'tool_name': current_tool_name, 'preview': preview})}\n\n"
+                        # 截断超大输出
+                        content_lines = content.split("\n")
+                        if len(content_lines) > 50:
+                            content = "\n".join(content_lines[:50]) + f"\n... (truncated, {len(content_lines)} total lines)"
+                        elif len(content) > 5000:
+                            content = content[:5000] + f"\n... (truncated, {len(content)} chars)"
+                        yield f"data: {json.dumps({
+                            'type': 'tool_result',
+                            'tool_name': current_tool_use['name'],
+                            'command': current_tool_use['command'],
+                            'is_error': is_error,
+                            'content': content,
+                        })}\n\n"
+                        await asyncio.sleep(0.005)
 
+                # ========== result（最终结果） ==========
                 elif et == "result":
                     content = data.get("result", "") or data.get("content", "")
                     if isinstance(content, list):
-                        content = "\n".join(b.get("text", "") for b in content if isinstance(b, dict) and b.get("type") == "text")
+                        content = "\n".join(
+                            b.get("text", "") for b in content
+                            if isinstance(b, dict) and b.get("type") == "text"
+                        )
                     if content and content != collected_text:
                         chunk = content[len(collected_text):]
                         if chunk:
@@ -216,7 +277,6 @@ async def chat_health(user=Depends(get_current_user)):
     if not shutil.which(CLAUDE_BIN):
         return JSONResponse({"status": "down", "claude": False, "error": "claude 命令不存在"})
     try:
-        # 轻量检查：只跑 --version，不走完整 agent 循环
         result = subprocess.run(
             [CLAUDE_BIN, "--version"],
             capture_output=True,

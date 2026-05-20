@@ -237,11 +237,24 @@ export default function Chat() {
                 fullText += data.content
                 setStreamingText(fullText)
                 break
-              case 'tool_use':
-                setStreamingText(
-                  (prev) => prev + `\n\n[使用工具: ${data.name}]`
-                )
+              case 'tool_use': {
+                const cmd = data.input?.command || ''
+                const label = cmd
+                  ? `$ ${cmd}`
+                  : `[使用工具: ${data.name}]`
+                setStreamingText((prev) => prev + `\n\n🔧 ${label}\n`)
                 break
+              }
+              case 'tool_result': {
+                const icon = data.is_error ? '❌' : '📋'
+                const lines = (data.content || '').split('\n')
+                const preview = lines.length > 8
+                  ? lines.slice(0, 8).join('\n') + `\n... (${lines.length} lines)`
+                  : data.content
+                const cmdLine = data.command ? `$ ${data.command}` : ''
+                setStreamingText((prev) => prev + `\n${icon} ${cmdLine || data.tool_name}\n\`\`\`\n${preview}\n\`\`\`\n`)
+                break
+              }
               case 'done':
                 setCurrentCost({
                   cost: data.cost,
