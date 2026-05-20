@@ -39,10 +39,16 @@ const routes = [
     meta: { title: 'DeepSeek 账单' },
   },
   {
+    path: '/agent',
+    name: 'Agent',
+    component: () => import('../views/Agent.vue'),
+    meta: { title: 'Agent' },
+  },
+  {
     path: '/chat',
     name: 'Chat',
     component: () => import('../views/Chat.vue'),
-    meta: { title: 'AI 助手' },
+    meta: { title: 'Claude-code' },
   },
 ]
 

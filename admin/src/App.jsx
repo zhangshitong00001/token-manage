@@ -5,7 +5,8 @@ import {
   DollarOutlined, FileTextOutlined, SettingOutlined,
   LogoutOutlined, WarningOutlined, DownOutlined,
   SafetyOutlined, BarChartOutlined, CloudUploadOutlined,
-  KeyOutlined, MessageOutlined,
+  KeyOutlined, MessageOutlined, CodeOutlined,
+  RobotOutlined,
 } from '@ant-design/icons'
 import { Routes, Route, useNavigate, useLocation } from 'react-router-dom'
 import Login from './pages/Login'
@@ -34,7 +35,14 @@ const menuItems = [
   { key: '/admin/system-usage', icon: <BarChartOutlined />, label: '系统消耗' },
   { key: '/admin/upload', icon: <CloudUploadOutlined />, label: '文件上传' },
   { key: '/admin/deepseek', icon: <KeyOutlined />, label: 'DeepSeek 管理' },
-  { key: '/admin/chat', icon: <MessageOutlined />, label: 'AI 助手' },
+  {
+    key: 'agent',
+    icon: <RobotOutlined />,
+    label: 'Agent',
+    children: [
+      { key: '/admin/chat', icon: <CodeOutlined />, label: 'Claude-code' },
+    ],
+  },
 ]
 
 function AppLayout() {
@@ -179,7 +187,17 @@ function AppLayout() {
           }}
         >
           <h2 style={{ margin: 0, fontSize: 16 }}>
-            {menuItems.find(m => m.key === location.pathname)?.label || 'TokenManager'}
+            {(() => {
+              const flat = menuItems.reduce((acc, item) => {
+                if (item.children) {
+                  item.children.forEach(c => acc.push(c))
+                } else {
+                  acc.push(item)
+                }
+                return acc
+              }, [])
+              return flat.find(m => m.key === location.pathname)?.label || 'TokenManager'
+            })()}
           </h2>
           <Space>
             <Dropdown menu={{ items: userMenuItems }} placement="bottomRight" trigger={['click']}>
