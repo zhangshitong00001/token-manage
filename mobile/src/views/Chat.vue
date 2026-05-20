@@ -54,11 +54,11 @@
       <!-- 检测到未完成的会话 -->
       <van-notice-bar
         v-if="activeStream"
-        color="#e67e22"
+        :color="activeStream.active ? '#e67e22' : '#1677ff'"
         background="#fff7e6"
         left-icon="info-o"
-        :text="'检测到上次任务仍在运行 (' + (activeStream.elapsed_seconds > 60 ? Math.floor(activeStream.elapsed_seconds/60) + '分钟' : activeStream.elapsed_seconds + '秒') + '前开始)'"
-        style="margin-bottom:8px;border-radius:8px;"
+        :text="(activeStream.active ? '检测到上次任务仍在运行' : '上次任务已完成') + ' (' + (activeStream.elapsed_seconds > 60 ? Math.floor(activeStream.elapsed_seconds/60) + '分钟' : activeStream.elapsed_seconds + '秒') + '前开始)'"
+        style="margin-bottom:8px;border-radius:8px"
       >
         <template #right-icon>
           <van-icon name="cross" @click="activeStream = null" />

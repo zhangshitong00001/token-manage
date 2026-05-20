@@ -153,12 +153,14 @@ def _stream_cache_key(user_id: int) -> str:
     return f"chat:streaming:{user_id}"
 
 def _save_stream_progress(user_id: int, collected_text: str, event_count: int,
-                          user_message: str = "", start_time: float = 0):
+                          user_message: str = "", start_time: float = 0,
+                          finished: bool = False):
     """将当前流进度写入 Redis"""
     try:
         r = get_redis()
         r.setex(_stream_cache_key(user_id), _STREAM_CACHE_TTL, json.dumps({
-            "active": True,
+            "active": not finished,
+            "finished": finished,
             "collected_text": collected_text[-3000:],  # 保留最近3000字
             "user_message": user_message,
             "event_count": event_count,
@@ -328,8 +330,9 @@ async def chat_stream(
                     # 获取本次变更的文件列表
                     changed_files = _get_changed_files()
 
-                    # 清除缓存 + 保存到聊天历史（即使前端已断开）
-                    _clear_stream_progress(user_id_val)
+                    # 保存结果到缓存 + 保存到聊天历史（即使前端已断开）
+                    _save_stream_progress(user_id_val, collected_text, event_count,
+                        user_message=req.message, start_time=start_time, finished=True)
                     try:
                         from app.database import SessionLocal
                         from app.models.chat_history import ChatHistory as ChatHistoryModel
@@ -403,8 +406,9 @@ async def chat_stream(
                 except Exception:
                     pass
 
-        # 无论是否出错，清理缓存
-        _clear_stream_progress(user_id_val)
+        # 保存最终状态到缓存（不清理，供前端断线恢复）
+        _save_stream_progress(user_id_val, collected_text, event_count,
+            user_message=req.message, start_time=start_time, finished=True)
 
         if not error_occurred and collected_text:
             changed_files = _get_changed_files()
@@ -512,6 +516,7 @@ async def stream_status(user=Depends(get_current_user)):
             elapsed = int(time.time()) - data.get("started_at", time.time())
             return {
                 "active": data.get("active", False),
+                "finished": data.get("finished", False),
                 "collected_text": data.get("collected_text", ""),
                 "user_message": data.get("user_message", ""),
                 "elapsed_seconds": max(0, elapsed),
@@ -519,7 +524,7 @@ async def stream_status(user=Depends(get_current_user)):
             }
     except Exception:
         pass
-    return {"active": False, "collected_text": "", "user_message": "", "elapsed_seconds": 0, "event_count": 0}
+    return {"active": False, "finished": False, "collected_text": "", "user_message": "", "elapsed_seconds": 0, "event_count": 0}
 
 
 @router.get("/health")

@@ -399,9 +399,14 @@ export default function Chat() {
       {/* 检测到未完成的会话 */}
       {activeStream && (
         <Alert
-          type="warning"
+          type={activeStream.active ? "warning" : "info"}
           showIcon
-          message={`检测到上次 AI 任务仍在运行（${activeStream.elapsed_seconds > 60 ? `${Math.floor(activeStream.elapsed_seconds / 60)}分钟` : `${activeStream.elapsed_seconds}秒`}前开始）`}
+          icon={activeStream.active ? <ClockCircleOutlined /> : <RobotOutlined />}
+          message={
+            activeStream.active
+              ? `检测到上次 AI 任务仍在运行（${activeStream.elapsed_seconds > 60 ? `${Math.floor(activeStream.elapsed_seconds / 60)}分钟` : `${activeStream.elapsed_seconds}秒`}前开始）`
+              : `上次 AI 任务已完成（${activeStream.elapsed_seconds > 60 ? `${Math.floor(activeStream.elapsed_seconds / 60)}分钟` : `${activeStream.elapsed_seconds}秒`}）`
+          }
           description={
             <div>
               <div style={{ marginBottom: 8, fontSize: 12, color: '#666', whiteSpace: 'pre-wrap', maxHeight: 100, overflow: 'auto' }}>
