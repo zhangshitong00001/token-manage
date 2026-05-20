@@ -16,6 +16,7 @@ from pathlib import Path
 from pydantic import BaseModel
 
 from app.core.deps import get_current_user
+from app.core.redis_client import get_redis
 from app.models.chat_history import save_chat_message, load_chat_history, save_conversation
 
 router = APIRouter(prefix="/api/chat", tags=["AI聊天"])
@@ -145,6 +146,37 @@ def _split_stream_chunks(text: str) -> list[str]:
     return pieces
 
 
+# ── 流式会话缓存（Redis） ──
+_STREAM_CACHE_TTL = 600  # 10分钟
+
+def _stream_cache_key(user_id: int) -> str:
+    return f"chat:streaming:{user_id}"
+
+def _save_stream_progress(user_id: int, collected_text: str, event_count: int,
+                          user_message: str = "", start_time: float = 0):
+    """将当前流进度写入 Redis"""
+    try:
+        r = get_redis()
+        r.setex(_stream_cache_key(user_id), _STREAM_CACHE_TTL, json.dumps({
+            "active": True,
+            "collected_text": collected_text[-3000:],  # 保留最近3000字
+            "user_message": user_message,
+            "event_count": event_count,
+            "started_at": int(start_time),
+            "updated_at": int(time.time()),
+        }))
+    except Exception:
+        pass  # Redis 不可用不影响主流程
+
+def _clear_stream_progress(user_id: int):
+    """清除流进度缓存"""
+    try:
+        r = get_redis()
+        r.delete(_stream_cache_key(user_id))
+    except Exception:
+        pass
+
+
 @router.post("/stream")
 async def chat_stream(
     req: ChatRequest,
@@ -158,6 +190,11 @@ async def chat_stream(
         collected_text = ""
         current_tool_use = {"name": "", "command": ""}
         error_occurred = False
+        user_id_val = user.id
+        event_count = 0
+
+        # 缓存初始状态
+        _save_stream_progress(user_id_val, "", 0, req.message, time.time())
 
         try:
             proc = await asyncio.create_subprocess_exec(
@@ -213,6 +250,8 @@ async def chat_stream(
                                 for piece in _split_stream_chunks(new_text):
                                     yield f"data: {json.dumps({'type': 'text', 'content': piece})}\n\n"
                                     await asyncio.sleep(0.015)
+                                event_count += 1
+                                _save_stream_progress(user_id_val, collected_text, event_count, req.message, start_time)
                         elif bt == "tool_use":
                             name = block.get("name", "")
                             inp = block.get("input", {})
@@ -289,6 +328,23 @@ async def chat_stream(
                     # 获取本次变更的文件列表
                     changed_files = _get_changed_files()
 
+                    # 清除缓存 + 保存到聊天历史（即使前端已断开）
+                    _clear_stream_progress(user_id_val)
+                    try:
+                        from app.database import SessionLocal
+                        from app.models.chat_history import ChatHistory as ChatHistoryModel
+                        db = SessionLocal()
+                        try:
+                            db.add(ChatHistoryModel(user_id=user_id_val, conversation_id=0,
+                                role="user", content=req.message))
+                            db.add(ChatHistoryModel(user_id=user_id_val, conversation_id=0,
+                                role="assistant", content=collected_text or "(无回复)"))
+                            db.commit()
+                        finally:
+                            db.close()
+                    except Exception:
+                        pass
+
                     elapsed = time.time() - start_time
                     yield f"data: {json.dumps({
                         'type': 'done',
@@ -310,11 +366,45 @@ async def chat_stream(
             stderr_task.cancel()
             yield f"data: {json.dumps({'type': 'error', 'message': 'Claude 响应超时，请重试'})}\n\n"
             error_occurred = True
+            # 保存已有部分到历史
+            if collected_text:
+                try:
+                    from app.database import SessionLocal
+                    from app.models.chat_history import ChatHistory as ChatHistoryModel
+                    db = SessionLocal()
+                    try:
+                        db.add(ChatHistoryModel(user_id=user_id_val, conversation_id=0,
+                            role="user", content=req.message))
+                        db.add(ChatHistoryModel(user_id=user_id_val, conversation_id=0,
+                            role="assistant", content=f"[超时中断]\n{collected_text}"))
+                        db.commit()
+                    finally:
+                        db.close()
+                except Exception:
+                    pass
         except FileNotFoundError:
             yield f"data: {json.dumps({'type': 'error', 'message': f'找不到 claude 命令（{CLAUDE_BIN}）'})}\n\n"
         except Exception as e:
             yield f"data: {json.dumps({'type': 'error', 'message': f'内部错误: {str(e)}'})}\n\n"
             error_occurred = True
+            if collected_text:
+                try:
+                    from app.database import SessionLocal
+                    from app.models.chat_history import ChatHistory as ChatHistoryModel
+                    db = SessionLocal()
+                    try:
+                        db.add(ChatHistoryModel(user_id=user_id_val, conversation_id=0,
+                            role="user", content=req.message))
+                        db.add(ChatHistoryModel(user_id=user_id_val, conversation_id=0,
+                            role="assistant", content=f"[异常中断]\n{collected_text}"))
+                        db.commit()
+                    finally:
+                        db.close()
+                except Exception:
+                    pass
+
+        # 无论是否出错，清理缓存
+        _clear_stream_progress(user_id_val)
 
         if not error_occurred and collected_text:
             changed_files = _get_changed_files()
@@ -409,6 +499,27 @@ async def chat_upload(
         "type": file_type,
         "size": written,
     }
+
+
+@router.get("/stream-status")
+async def stream_status(user=Depends(get_current_user)):
+    """查询当前用户是否有活跃的流式会话"""
+    try:
+        r = get_redis()
+        raw = r.get(_stream_cache_key(user.id))
+        if raw:
+            data = json.loads(str(raw))
+            elapsed = int(time.time()) - data.get("started_at", time.time())
+            return {
+                "active": data.get("active", False),
+                "collected_text": data.get("collected_text", ""),
+                "user_message": data.get("user_message", ""),
+                "elapsed_seconds": max(0, elapsed),
+                "event_count": data.get("event_count", 0),
+            }
+    except Exception:
+        pass
+    return {"active": False, "collected_text": "", "user_message": "", "elapsed_seconds": 0, "event_count": 0}
 
 
 @router.get("/health")

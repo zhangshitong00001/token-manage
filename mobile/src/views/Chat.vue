@@ -51,6 +51,23 @@
         </van-space>
       </div>
 
+      <!-- 检测到未完成的会话 -->
+      <van-notice-bar
+        v-if="activeStream"
+        color="#e67e22"
+        background="#fff7e6"
+        left-icon="info-o"
+        :text="'检测到上次任务仍在运行 (' + (activeStream.elapsed_seconds > 60 ? Math.floor(activeStream.elapsed_seconds/60) + '分钟' : activeStream.elapsed_seconds + '秒') + '前开始)'"
+        style="margin-bottom:8px;border-radius:8px;"
+      >
+        <template #right-icon>
+          <van-icon name="cross" @click="activeStream = null" />
+        </template>
+      </van-notice-bar>
+      <div v-if="activeStream" style="margin-bottom:12px;padding:8px 12px;background:#fff7e6;border-radius:8px;font-size:12px;color:#666;max-height:100px;overflow:auto;white-space:pre-wrap;">
+        {{ activeStream.collected_text?.slice(-300) || '(暂无输出)' }}
+      </div>
+
       <!-- 消息气泡 -->
       <div
         v-for="(msg, i) in messages"
@@ -170,6 +187,7 @@ const uploading = ref(false)
 const messagesRef = ref(null)
 const scrollEnd = ref(null)
 const fileInputRef = ref(null)
+const activeStream = ref(null) // {collected_text, elapsed_seconds, user_message} | null
 
 // ── 状态指示 ──
 const healthStatus = ref('checking') // 'checking' | 'ok' | 'degraded' | 'down'
@@ -303,7 +321,9 @@ onMounted(async () => {
   loadFromStorage()
   // 2) 从后端同步（覆盖更新）
   await loadFromBackend()
-  // 3) 开始健康检查
+  // 3) 检查是否有正在运行的流式会话
+  checkActiveStream()
+  // 4) 开始健康检查
   startHealthPoll()
 })
 
@@ -313,6 +333,22 @@ onUnmounted(() => {
   // 离开时保存
   saveToStorage()
 })
+
+/** 检查是否有正在运行的流式会话 */
+async function checkActiveStream() {
+  const token = getToken()
+  if (!token) return
+  try {
+    const res = await fetch(`${BASE_URL}/api/chat/stream-status`, {
+      headers: { 'Authorization': `Bearer ${token}` },
+    })
+    if (!res.ok) return
+    const data = await res.json()
+    if (data.active) {
+      activeStream.value = data
+    }
+  } catch { /* ignore */ }
+}
 
 // 消息变化时自动保存
 watch(messages, () => {

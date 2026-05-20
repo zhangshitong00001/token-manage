@@ -49,6 +49,7 @@ export default function Chat() {
   const [uploadedFiles, setUploadedFiles] = useState([])
   const [uploading, setUploading] = useState(false)
   const [healthStatus, setHealthStatus] = useState('checking')
+  const [activeStream, setActiveStream] = useState(null)  // {collected_text, elapsed_seconds, user_message} | null
   const messagesEndRef = useRef(null)
   const fileInputRef = useRef(null)
 
@@ -120,6 +121,17 @@ export default function Chat() {
       const timer = setInterval(check, 15000)
       return () => clearInterval(timer)
     }
+    // 检查是否有正在运行的流式会话
+    const checkStream = () => {
+      fetch('/api/chat/stream-status', {
+        headers: { 'Authorization': `Bearer ${token}` },
+      }).then(r => r.json()).then(d => {
+        if (d.active) {
+          setActiveStream(d)
+        }
+      }).catch(() => {})
+    }
+    checkStream()
   }, [loadFromStorage])
 
   const scrollToBottom = useCallback(() => {
@@ -320,6 +332,21 @@ export default function Chat() {
     }
   }
 
+  /** 刷新聊天历史 */
+  const refreshHistory = () => {
+    const token = getToken()
+    if (!token) return
+    setActiveStream(null)
+    fetch('/api/chat/history', {
+      headers: { 'Authorization': `Bearer ${token}` },
+    }).then(r => r.json()).then(data => {
+      if (data.messages?.length > 0) {
+        setMessages(data.messages)
+        saveToStorage(data.messages)
+      }
+    }).catch(() => {})
+  }
+
   const handleKeyDown = (e) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
@@ -368,6 +395,33 @@ export default function Chat() {
           </Button>
         </Space>
       </Card>
+
+      {/* 检测到未完成的会话 */}
+      {activeStream && (
+        <Alert
+          type="warning"
+          showIcon
+          message={`检测到上次 AI 任务仍在运行（${activeStream.elapsed_seconds > 60 ? `${Math.floor(activeStream.elapsed_seconds / 60)}分钟` : `${activeStream.elapsed_seconds}秒`}前开始）`}
+          description={
+            <div>
+              <div style={{ marginBottom: 8, fontSize: 12, color: '#666', whiteSpace: 'pre-wrap', maxHeight: 100, overflow: 'auto' }}>
+                {activeStream.collected_text?.slice(-500) || '(暂无输出)'}
+              </div>
+              <Space>
+                <Button size="small" type="primary" onClick={() => setActiveStream(null)}>
+                  知道了，继续
+                </Button>
+                <Button size="small" danger onClick={refreshHistory}>
+                  刷新历史
+                </Button>
+              </Space>
+            </div>
+          }
+          style={{ marginBottom: 12 }}
+          closable
+          onClose={() => setActiveStream(null)}
+        />
+      )}
 
       {/* 消息区域 */}
       <div
