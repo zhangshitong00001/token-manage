@@ -15,6 +15,7 @@ from app.models.order import RechargeOrder
 from app.models.package import TokenPackage
 from app.models.price_config import PriceConfig
 from app.models.system_daily_usage import SystemDailyUsage
+from app.models.deepseek_invoice import DeepSeekInvoice
 from app.schemas import (
     AdminUserUpdate, PriceConfigOut, PriceConfigUpdate,
     AdminStats, PackageOut, PackageUpdate, UserProfile,
@@ -664,3 +665,93 @@ def ds_get_summary(admin: User = Depends(get_admin_user)):
         raise
     except Exception as e:
         raise HTTPException(502, f"获取账户摘要失败: {str(e)}")
+
+
+@router.get("/deepseek/invoices")
+def list_deepseek_invoices(
+    page: int = 1,
+    page_size: int = 20,
+    status: str = "",
+    admin: User = Depends(get_admin_user),
+    db: Session = Depends(get_db),
+):
+    """查询 DeepSeek 充值账单（与 H5 同步）"""
+    q = db.query(DeepSeekInvoice).order_by(DeepSeekInvoice.inserted_at.desc().nullslast())
+    if status:
+        q = q.filter(DeepSeekInvoice.status == status.upper())
+    total = q.count()
+    items = q.offset((page - 1) * page_size).limit(page_size).all()
+    return {
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+        "items": [
+            {
+                "id": r.id,
+                "payment_order_id": r.payment_order_id,
+                "amount": r.amount,
+                "currency": r.currency,
+                "status": r.status,
+                "payment_method": r.payment_method,
+                "paid_at": r.paid_at.isoformat() if r.paid_at else None,
+                "inserted_at": r.inserted_at.isoformat() if r.inserted_at else None,
+                "sync_at": r.sync_at.isoformat() if r.sync_at else None,
+            }
+            for r in items
+        ],
+    }
+
+
+@router.post("/deepseek/invoices/sync")
+def sync_deepseek_invoices(
+    admin: User = Depends(get_admin_user),
+    db: Session = Depends(get_db),
+):
+    """同步 DeepSeek 充值账单"""
+    from app.core.deepseek_payment import DeepSeekPayment
+    from datetime import datetime as dt
+
+    _ds_pay = DeepSeekPayment()
+    try:
+        token = settings.DEEPSEEK_USER_TOKEN
+        orders = _ds_pay.get_invoices(override_token=token)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"同步失败: {str(e)}")
+
+    now = dt.utcnow()
+    new_count = 0
+    for o in orders:
+        pid = o.get("payment_order_id", "")
+        if not pid:
+            continue
+        existing = db.query(DeepSeekInvoice).filter(
+            DeepSeekInvoice.payment_order_id == pid
+        ).first()
+        if existing:
+            existing.status = o.get("payment_order_status", existing.status)
+            if o.get("updated_at"):
+                try:
+                    existing.updated_at = dt.fromisoformat(o["updated_at"].replace("Z", "+00:00"))
+                except: pass
+            if o.get("paid_at"):
+                try:
+                    existing.paid_at = dt.fromisoformat(o["paid_at"].replace("Z", "+00:00")) if isinstance(o["paid_at"], str) else existing.paid_at
+                except: pass
+            existing.sync_at = now
+        else:
+            inv = DeepSeekInvoice(
+                payment_order_id=pid,
+                amount=int(o.get("amount", 0)),
+                currency=o.get("currency", "CNY"),
+                status=o.get("payment_order_status", "CREATED"),
+                payment_method=o.get("payment_method", ""),
+                inserted_at=dt.fromisoformat(o["inserted_at"].replace("Z", "+00:00")) if o.get("inserted_at") else None,
+                paid_at=dt.fromisoformat(o["paid_at"].replace("Z", "+00:00")) if o.get("paid_at") else None,
+                updated_at=dt.fromisoformat(o["updated_at"].replace("Z", "+00:00")) if o.get("updated_at") else None,
+                sync_at=now,
+            )
+            db.add(inv)
+            new_count += 1
+
+    db.commit()
+    return {"success": True, "message": f"同步完成，新增 {new_count} 条，更新 {len(orders) - new_count} 条"}
