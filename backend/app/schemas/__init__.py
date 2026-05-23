@@ -10,6 +10,7 @@ class UserRegister(BaseModel):
     email: Optional[str] = None
     password: str = Field(..., min_length=6)
     nickname: Optional[str] = ""
+    code: str = ""
 
 
 class UserLogin(BaseModel):

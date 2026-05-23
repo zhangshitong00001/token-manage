@@ -20,7 +20,7 @@ ADMIN_EMAIL = settings.ADMIN_EMAIL
 
 @router.post("/register")
 def register(data: UserRegister, db: Session = Depends(get_db)):
-    """注册（不自动返回Token，降低风险）"""
+    """注册（需邮箱验证码）"""
     identifier = data.email or data.phone or "unknown"
 
     # 频率限制：同一邮箱/手机每1小时最多注册3次
@@ -31,8 +31,6 @@ def register(data: UserRegister, db: Session = Depends(get_db)):
     if not data.phone and not data.email:
         raise HTTPException(status_code=400, detail="手机号或邮箱至少填一个")
 
-    # 频率限制：同一IP每分钟最多注册3次
-    # （简化处理，生产环境应获取真实IP）
     if data.phone:
         existing = db.query(User).filter(User.phone == data.phone).first()
         if existing:
@@ -41,6 +39,13 @@ def register(data: UserRegister, db: Session = Depends(get_db)):
         existing = db.query(User).filter(User.email == data.email).first()
         if existing:
             raise HTTPException(status_code=400, detail="邮箱已注册")
+
+    # 验证邮箱验证码
+    if data.email:
+        if not data.code:
+            raise HTTPException(status_code=400, detail="请输入验证码")
+        if not verify_sms_code(data.email, data.code):
+            raise HTTPException(status_code=400, detail="验证码错误或已过期")
 
     user = User(
         phone=data.phone,
