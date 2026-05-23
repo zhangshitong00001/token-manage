@@ -25,16 +25,17 @@ import useIdleTimer from './useIdleTimer'
 
 const { Header, Sider, Content } = Layout
 
-const menuItems = [
+// 全部菜单项
+const allMenuItems = [
   { key: '/admin/dashboard', icon: <DashboardOutlined />, label: '仪表盘' },
-  { key: '/admin/users', icon: <UserOutlined />, label: '用户管理' },
-  { key: '/admin/orders', icon: <ShoppingCartOutlined />, label: '订单管理' },
-  { key: '/admin/packages', icon: <DollarOutlined />, label: '套餐管理' },
-  { key: '/admin/price', icon: <SettingOutlined />, label: '价格配置' },
+  { key: '/admin/users', icon: <UserOutlined />, label: '用户管理', adminOnly: true },
+  { key: '/admin/orders', icon: <ShoppingCartOutlined />, label: '订单管理', adminOnly: true },
+  { key: '/admin/packages', icon: <DollarOutlined />, label: '套餐管理', adminOnly: true },
+  { key: '/admin/price', icon: <SettingOutlined />, label: '价格配置', adminOnly: true },
   { key: '/admin/usage', icon: <FileTextOutlined />, label: '消耗记录' },
   { key: '/admin/system-usage', icon: <BarChartOutlined />, label: '系统消耗' },
   { key: '/admin/upload', icon: <CloudUploadOutlined />, label: '文件上传' },
-  { key: '/admin/deepseek', icon: <KeyOutlined />, label: 'DeepSeek 管理' },
+  { key: '/admin/deepseek', icon: <KeyOutlined />, label: 'DeepSeek 管理', adminOnly: true },
   {
     key: 'agent',
     icon: <RobotOutlined />,
@@ -45,6 +46,18 @@ const menuItems = [
   },
 ]
 
+function getFilteredMenus(isAdmin) {
+  if (isAdmin) return allMenuItems
+  return allMenuItems
+    .filter(item => !item.adminOnly)
+    .map(item => {
+      if (item.children) {
+        return { ...item, children: item.children.filter(c => !c.adminOnly) }
+      }
+      return item
+    })
+}
+
 function AppLayout() {
   const navigate = useNavigate()
   const location = useLocation()
@@ -54,6 +67,9 @@ function AppLayout() {
   const token = localStorage.getItem('admin_token')
   const userStr = localStorage.getItem('admin_user')
   const user = userStr ? JSON.parse(userStr) : null
+  const isAdmin = user?.role === 'admin'
+
+  const menuItems = getFilteredMenus(isAdmin)
 
   const showExpiredModal = useCallback(() => {
     if (modalShownRef.current) return

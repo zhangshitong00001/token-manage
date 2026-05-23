@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react'
+import React, { useState, useRef, useEffect } from 'react'
 import { Form, Input, Button, Card, message, Typography, Space, Alert, Tabs } from 'antd'
 import { MailOutlined, SafetyCertificateOutlined, LockOutlined, UserOutlined, KeyOutlined } from '@ant-design/icons'
 import api from '../api'
@@ -108,25 +108,34 @@ function AdminLoginForm({ onSuccess }) {
   )
 }
 
-function UserLoginForm({ onSuccess }) {
+function UserLoginForm({ onSuccess, defaultEmail }) {
   const [loading, setLoading] = useState(false)
+  const [form] = Form.useForm()
+
+  // 注册成功跳转时自动填充邮箱
+  useEffect(() => {
+    if (defaultEmail) {
+      form.setFieldsValue({ email: defaultEmail })
+    }
+  }, [defaultEmail])
 
   const onFinish = async (values) => {
     setLoading(true)
     try {
       const res = await api.post('/auth/login', { account: values.email, password: values.password })
-      localStorage.setItem('token', res.access_token)
-      localStorage.setItem('user', JSON.stringify(res.user))
+      // 存入 admin_token，让用户留在后台管理界面
+      localStorage.setItem('admin_token', res.access_token)
+      localStorage.setItem('admin_user', JSON.stringify({ ...res.user, role: 'user' }))
+      localStorage.setItem('admin_login_time', Date.now().toString())
       message.success({ content: '✅ 登录成功', duration: 2 })
-      // 跳转到 /home (H5)
-      window.location.href = '/#/home'
+      onSuccess()
     } catch (e) {
       message.error(e.response?.data?.detail || '登录失败')
     } finally { setLoading(false) }
   }
 
   return (
-    <Form onFinish={onFinish} size="large" layout="vertical">
+    <Form form={form} onFinish={onFinish} size="large" layout="vertical">
       <Form.Item name="email" label="邮箱"
         rules={[{ required: true, message: '请输入邮箱' }, { type: 'email', message: '邮箱格式不正确' }]}
       >
@@ -153,7 +162,7 @@ function UserLoginForm({ onSuccess }) {
   )
 }
 
-function UserRegisterForm() {
+function UserRegisterForm({ onRegistered }) {
   const [loading, setLoading] = useState(false)
   const [codeLoading, setCodeLoading] = useState(false)
   const [countdown, setCountdown] = useState(0)
@@ -194,7 +203,8 @@ function UserRegisterForm() {
         nickname: values.nickname || '',
         password: values.password,
       })
-      message.success({ content: '✅ 注册成功，请登录', duration: 3 })
+      message.success({ content: '✅ 注册成功，自动跳转登录', duration: 2 })
+      if (onRegistered) onRegistered(values.email)
     } catch (e) {
       message.error(e.response?.data?.detail || '注册失败')
     } finally { setLoading(false) }
@@ -257,6 +267,14 @@ function UserRegisterForm() {
 }
 
 export default function Login({ onLogin }) {
+  const [activeTab, setActiveTab] = useState('admin')
+  const [registeredEmail, setRegisteredEmail] = useState('')
+
+  const handleRegistered = (email) => {
+    setRegisteredEmail(email)
+    setActiveTab('user')
+  }
+
   return (
     <div style={{
       minHeight: '100vh',
@@ -306,6 +324,8 @@ export default function Login({ onLogin }) {
 
         <Tabs
           centered
+          activeKey={activeTab}
+          onChange={setActiveTab}
           items={[
             {
               key: 'admin',
@@ -321,15 +341,15 @@ export default function Login({ onLogin }) {
             {
               key: 'user',
               label: '用户登录',
-              children: <UserLoginForm onSuccess={onLogin} />,
+              children: <UserLoginForm onSuccess={onLogin} defaultEmail={registeredEmail} />,
             },
             {
               key: 'register',
               label: '用户注册',
               children: (
                 <>
-                  <UserRegisterForm />
-                  <Alert message="注册后可在用户登录页登录，管理员可在后台查看用户信息" type="info" showIcon
+                  <UserRegisterForm onRegistered={handleRegistered} />
+                  <Alert message="注册后将在用户登录页自动填入邮箱" type="info" showIcon
                     style={{ borderRadius: 8, fontSize: 12, marginTop: 8 }} />
                 </>
               ),
