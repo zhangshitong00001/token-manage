@@ -1,11 +1,17 @@
-import React, { useState, useEffect } from 'react'
-import { Row, Col, Card, Spin, Table, Tag, Button, Modal, Descriptions, message, Progress, Tooltip } from 'antd'
+import React, { useState, useEffect, useMemo } from 'react'
+import { Row, Col, Card, Spin, Table, Tag, Button, Modal, Descriptions, message, Progress, Tooltip, DatePicker } from 'antd'
 import {
   KeyOutlined, EyeOutlined, EyeInvisibleOutlined,
   DollarOutlined, FileTextOutlined, ShoppingCartOutlined,
   RiseOutlined, ReloadOutlined, CopyOutlined,
   CheckCircleOutlined, CloseCircleOutlined, WarningOutlined,
+  BarChartOutlined,
 } from '@ant-design/icons'
+import {
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as ReTooltip,
+  Legend, ResponsiveContainer, Cell,
+} from 'recharts'
+import dayjs from 'dayjs'
 import api from '../api'
 
 export default function DeepSeek() {
@@ -17,6 +23,7 @@ export default function DeepSeek() {
   const [revealing, setRevealing] = useState({})
   const [modalKey, setModalKey] = useState(null)
   const [modalVisible, setModalVisible] = useState(false)
+  const [dateRange, setDateRange] = useState([null, null])
 
   const loadData = async () => {
     setLoading(true)
@@ -384,62 +391,129 @@ export default function DeepSeek() {
           </Card>
         </Col>
         <Col span={12}>
-          <Card title="📈 每日用量趋势" style={{ borderRadius: 12 }}>
+          <Card title="📈 每日 Token 用量趋势（柱形图）" style={{ borderRadius: 12 }}
+            extra={
+              <DatePicker.RangePicker
+                size="small"
+                placeholder={['起始日期', '结束日期']}
+                value={dateRange}
+                onChange={(dates) => setDateRange(dates || [null, null])}
+                allowClear
+                style={{ width: 240 }}
+              />
+            }
+          >
             {(() => {
               const amountData = usage?.amount?.data?.biz_data
               const days = amountData?.days || []
               if (!days.length) return <div style={{ color: '#999', textAlign: 'center', padding: 20 }}>暂无数据</div>
-              
-              // 只显示有数据的日期，按日期倒序排列
-              const activeDays = days
+
+              // 解析每日数据
+              const allDays = days
                 .filter(d => d.data?.some(m => m.usage?.some(u => parseInt(u.amount) > 0)))
+                .map(d => {
+                  const v4pro = d.data?.find(x => x.model === 'deepseek-v4-pro')
+                  const v4flash = d.data?.find(x => x.model === 'deepseek-v4-flash')
+                  const getTotal = (modelData) => {
+                    if (!modelData) return 0
+                    return (modelData.usage || [])
+                      .filter(u => u.type !== 'REQUEST')
+                      .reduce((s, u) => s + parseInt(u.amount || '0'), 0)
+                  }
+                  const getRequests = (modelData) => {
+                    if (!modelData) return 0
+                    const req = modelData.usage?.find(u => u.type === 'REQUEST')
+                    return req ? parseInt(req.amount || '0') : 0
+                  }
+                  return {
+                    date: d.date,
+                    shortDate: d.date.slice(5), // "05-21"
+                    v4pro: getTotal(v4pro),
+                    v4flash: getTotal(v4flash),
+                    requests: getRequests(v4pro) + getRequests(v4flash),
+                  }
+                })
                 .sort((a, b) => b.date.localeCompare(a.date))
-                .slice(0, 31)
-              
-              if (!activeDays.length) return <div style={{ color: '#999', textAlign: 'center', padding: 20 }}>暂无数据</div>
-              
+
+              // 日期范围过滤
+              let filtered = allDays
+              if (dateRange[0] && dateRange[1]) {
+                const start = dateRange[0].format('YYYY-MM-DD')
+                const end = dateRange[1].format('YYYY-MM-DD')
+                filtered = allDays.filter(d => d.date >= start && d.date <= end)
+              }
+
+              // 默认只显示前 10 条
+              const displayData = filtered.slice(0, 10).reverse() // reverse so chart shows oldest → newest left→right
+
+              if (!displayData.length) return <div style={{ color: '#999', textAlign: 'center', padding: 20 }}>暂无数据</div>
+
+              const totalMax = Math.max(
+                ...displayData.map(d => d.v4pro + d.v4flash),
+                1
+              )
+
+              const formatShort = (v) => {
+                if (v >= 100000000) return (v / 100000000).toFixed(1) + '亿'
+                if (v >= 10000) return (v / 10000).toFixed(1) + '万'
+                return v.toLocaleString()
+              }
+
+              const CustomTooltip = ({ active, payload, label }) => {
+                if (!active || !payload?.length) return null
+                const day = displayData.find(d => d.shortDate === label)
+                if (!day) return null
+                return (
+                  <div style={{
+                    background: '#fff', border: '1px solid #e8e8e8',
+                    borderRadius: 8, padding: '10px 14px', boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
+                    fontSize: 13,
+                  }}>
+                    <div style={{ fontWeight: 600, marginBottom: 6, color: '#333' }}>{day.date}</div>
+                    {payload.map((p, i) => (
+                      <div key={i} style={{ color: p.color, marginBottom: 2 }}>
+                        {p.name}: <b>{formatShort(p.value)}</b>
+                      </div>
+                    ))}
+                    <div style={{ marginTop: 4, color: '#666' }}>
+                      请求数: <b>{day.requests.toLocaleString()}</b>
+                    </div>
+                  </div>
+                )
+              }
+
               return (
-                <Table
-                  dataSource={activeDays}
-                  rowKey="date"
-                  pagination={false}
-                  size="small"
-                  columns={[
-                    { title: '日期', dataIndex: 'date', render: (t) => t },
-                    {
-                      title: 'V4-Pro',
-                      key: 'v4-pro',
-                      render: (_, record) => {
-                        const m = record.data?.find(x => x.model === 'deepseek-v4-pro')
-                        if (!m) return '-'
-                        const total = (m.usage || []).reduce((s, u) => s + parseInt(u.amount || '0'), 0)
-                        return total > 0 ? formatBigNumber(total) : '-'
-                      },
-                    },
-                    {
-                      title: 'V4-Flash',
-                      key: 'v4-flash',
-                      render: (_, record) => {
-                        const m = record.data?.find(x => x.model === 'deepseek-v4-flash')
-                        if (!m) return '-'
-                        const total = (m.usage || []).reduce((s, u) => s + parseInt(u.amount || '0'), 0)
-                        return total > 0 ? formatBigNumber(total) : '-'
-                      },
-                    },
-                    {
-                      title: '请求数',
-                      key: 'requests',
-                      render: (_, record) => {
-                        let total = 0
-                        record.data?.forEach(m => {
-                          const req = m.usage?.find(u => u.type === 'REQUEST')
-                          if (req) total += parseInt(req.amount || '0')
-                        })
-                        return total > 0 ? total.toLocaleString() : '-'
-                      },
-                    },
-                  ]}
-                />
+                <div>
+                  <div style={{ marginBottom: 8, fontSize: 12, color: '#999' }}>
+                    共 {filtered.length} 天数据，显示最近 {displayData.length} 天
+                    {filtered.length > 10 && (
+                      <span style={{ marginLeft: 8, color: '#667eea' }}>
+                        （选择日期区间可查看更多）
+                      </span>
+                    )}
+                  </div>
+                  <ResponsiveContainer width="100%" height={280}>
+                    <BarChart data={displayData} barGap={4} barCategoryGap={8}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                      <XAxis
+                        dataKey="shortDate"
+                        tick={{ fontSize: 11, fill: '#888' }}
+                        axisLine={{ stroke: '#e8e8e8' }}
+                      />
+                      <YAxis
+                        tick={{ fontSize: 11, fill: '#888' }}
+                        axisLine={{ stroke: '#e8e8e8' }}
+                        tickFormatter={formatShort}
+                      />
+                      <ReTooltip content={<CustomTooltip />} cursor={{ fill: 'rgba(102, 126, 234, 0.08)' }} />
+                      <Legend
+                        wrapperStyle={{ fontSize: 12, paddingTop: 8 }}
+                      />
+                      <Bar dataKey="v4pro" name="V4-Pro" fill="#667eea" radius={[4, 4, 0, 0]} maxBarSize={36} />
+                      <Bar dataKey="v4flash" name="V4-Flash" fill="#52c41a" radius={[4, 4, 0, 0]} maxBarSize={36} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
               )
             })()}
           </Card>
