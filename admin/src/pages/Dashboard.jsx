@@ -131,7 +131,7 @@ export default function Dashboard() {
     const end = dateRange[1].format('YYYY-MM-DD')
     filtered = allDays.filter(d => d.date >= start && d.date <= end)
   }
-  const chartData = filtered.slice(0, 10).reverse()
+  const chartData = [...filtered].reverse()
 
   const formatShort = (v) => {
     if (v >= 100000000) return (v / 100000000).toFixed(1) + '亿'
@@ -217,10 +217,40 @@ export default function Dashboard() {
         <Button icon={<ReloadOutlined />} onClick={loadData} loading={loading}>刷新数据</Button>
       </div>
 
-      {/* ===== 第1行：顶部概览（仅管理员） ===== */}
+      {/* ===== 第1行：充值统计卡片（单独一行） ===== */}
       {isAdmin && (
         <Row gutter={[12, 12]} style={{ marginBottom: 16 }}>
-        <Col xs={24} lg={6}>
+        <Col xs={12} lg={6}>
+          <Card style={{ borderRadius: 12, height: '100%', background: 'linear-gradient(135deg, #52c41a 0%, #237804 100%)', color: '#fff', border: 'none' }} bodyStyle={{ padding: '16px' }}>
+            <div style={{ fontSize: 11, opacity: 0.85, marginBottom: 6 }}>今日充值成功</div>
+            <div style={{ fontSize: 22, fontWeight: 700 }}>¥{(stats?.today_total_recharge || 0).toFixed(2)}</div>
+          </Card>
+        </Col>
+        <Col xs={12} lg={6}>
+          <Card style={{ borderRadius: 12, height: '100%', background: 'linear-gradient(135deg, #1677ff 0%, #0958d9 100%)', color: '#fff', border: 'none' }} bodyStyle={{ padding: '16px' }}>
+            <div style={{ fontSize: 11, opacity: 0.85, marginBottom: 6 }}>历史充值总额</div>
+            <div style={{ fontSize: 22, fontWeight: 700 }}>¥{(stats?.total_recharge_amount || 0).toFixed(2)}</div>
+          </Card>
+        </Col>
+        <Col xs={12} lg={6}>
+          <Card style={{ borderRadius: 12, height: '100%', background: 'linear-gradient(135deg, #fa8c16 0%, #d46b08 100%)', color: '#fff', border: 'none' }} bodyStyle={{ padding: '16px' }}>
+            <div style={{ fontSize: 11, opacity: 0.85, marginBottom: 6 }}>总用户</div>
+            <div style={{ fontSize: 22, fontWeight: 700 }}>{stats?.total_users || 0}</div>
+          </Card>
+        </Col>
+        <Col xs={12} lg={6}>
+          <Card style={{ borderRadius: 12, height: '100%', background: 'linear-gradient(135deg, #eb2f96 0%, #c41d7f 100%)', color: '#fff', border: 'none' }} bodyStyle={{ padding: '16px' }}>
+            <div style={{ fontSize: 11, opacity: 0.85, marginBottom: 6 }}>活跃用户</div>
+            <div style={{ fontSize: 22, fontWeight: 700 }}>{stats?.active_users || 0}</div>
+          </Card>
+        </Col>
+      </Row>
+      )}
+
+      {/* ===== 第2行：DeepSeek 余额 + 本月Token + 可用Token ===== */}
+      {isAdmin && (
+        <Row gutter={[12, 12]} style={{ marginBottom: 16 }}>
+        <Col xs={24} lg={10}>
           <Card style={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', borderRadius: 12, border: 'none', height: '100%' }}
             bodyStyle={{ padding: '20px' }}>
             <div style={{ color: 'rgba(255,255,255,0.8)', fontSize: 12, marginBottom: 10 }}>
@@ -245,40 +275,16 @@ export default function Dashboard() {
             </div>
           </Card>
         </Col>
-        <Col xs={12} lg={3}>
+        <Col xs={12} lg={7}>
           <Card style={{ borderRadius: 12, height: '100%' }} bodyStyle={{ padding: '16px' }}>
             <div style={{ color: '#999', fontSize: 11, marginBottom: 6 }}><FileTextOutlined style={{ marginRight: 4 }} />本月 Token</div>
             <div style={{ fontSize: 22, fontWeight: 700, color: '#667eea' }}>{formatNum(summary?.monthly_token_usage || 0)}</div>
           </Card>
         </Col>
-        <Col xs={12} lg={3}>
+        <Col xs={12} lg={7}>
           <Card style={{ borderRadius: 12, height: '100%' }} bodyStyle={{ padding: '16px' }}>
             <div style={{ color: '#999', fontSize: 11, marginBottom: 6 }}><RiseOutlined style={{ marginRight: 4 }} />可用 Token</div>
             <div style={{ fontSize: 22, fontWeight: 700, color: '#52c41a' }}>{formatNum(summary?.total_available_token_estimation || 0)}</div>
-          </Card>
-        </Col>
-        <Col xs={12} lg={3}>
-          <Card style={{ borderRadius: 12, height: '100%', background: 'linear-gradient(135deg, #52c41a 0%, #237804 100%)', color: '#fff', border: 'none' }} bodyStyle={{ padding: '16px' }}>
-            <div style={{ fontSize: 11, opacity: 0.85, marginBottom: 6 }}>今日充值成功</div>
-            <div style={{ fontSize: 22, fontWeight: 700 }}>¥{(stats?.today_total_recharge || 0).toFixed(2)}</div>
-          </Card>
-        </Col>
-        <Col xs={12} lg={3}>
-          <Card style={{ borderRadius: 12, height: '100%', background: 'linear-gradient(135deg, #1677ff 0%, #0958d9 100%)', color: '#fff', border: 'none' }} bodyStyle={{ padding: '16px' }}>
-            <div style={{ fontSize: 11, opacity: 0.85, marginBottom: 6 }}>历史充值总额</div>
-            <div style={{ fontSize: 22, fontWeight: 700 }}>¥{(stats?.total_recharge_amount || 0).toFixed(2)}</div>
-          </Card>
-        </Col>
-        <Col xs={12} lg={3}>
-          <Card style={{ borderRadius: 12, height: '100%', background: 'linear-gradient(135deg, #fa8c16 0%, #d46b08 100%)', color: '#fff', border: 'none' }} bodyStyle={{ padding: '16px' }}>
-            <div style={{ fontSize: 11, opacity: 0.85, marginBottom: 6 }}>总用户</div>
-            <div style={{ fontSize: 22, fontWeight: 700 }}>{stats?.total_users || 0}</div>
-          </Card>
-        </Col>
-        <Col xs={12} lg={3}>
-          <Card style={{ borderRadius: 12, height: '100%', background: 'linear-gradient(135deg, #eb2f96 0%, #c41d7f 100%)', color: '#fff', border: 'none' }} bodyStyle={{ padding: '16px' }}>
-            <div style={{ fontSize: 11, opacity: 0.85, marginBottom: 6 }}>活跃用户</div>
-            <div style={{ fontSize: 22, fontWeight: 700 }}>{stats?.active_users || 0}</div>
           </Card>
         </Col>
       </Row>
@@ -363,8 +369,7 @@ export default function Dashboard() {
         {chartData.length ? (
           <div>
             <div style={{ marginBottom: 8, fontSize: 12, color: '#999' }}>
-              共 {filtered.length} 天数据，显示最近 {chartData.length} 天
-              {filtered.length > 10 && <span style={{ marginLeft: 8, color: '#667eea' }}>（选择日期区间可查看更多）</span>}
+              共 {filtered.length} 天数据
             </div>
             <ResponsiveContainer width="100%" height={300}>
               <BarChart data={chartData} barGap={4} barCategoryGap={8}>
