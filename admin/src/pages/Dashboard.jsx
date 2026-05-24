@@ -120,7 +120,7 @@ export default function Dashboard() {
               <span style={{ fontSize: 14, opacity: 0.85 }}>今日充值成功</span>
             </div>
             <div style={{ fontSize: 32, fontWeight: 700 }}>
-              ¥{(stats?.today_total_recharge || 0) / 100}
+              ¥{(stats?.today_total_recharge || 0).toFixed(2)}
             </div>
           </Card>
         </Col>
