@@ -12,3 +12,6 @@ logs/
 .vscode/
 large_file.bin
 .env
+*.db
+video_assets/
+promo-assets/
