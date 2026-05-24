@@ -1,10 +1,10 @@
-import React, { useState, useEffect, useMemo } from 'react'
+import React, { useState, useEffect } from 'react'
 import { Row, Col, Card, Spin, Table, Tag, Button, Modal, Descriptions, message, Tooltip } from 'antd'
 import {
   WalletOutlined, RiseOutlined, ReloadOutlined,
   DollarOutlined, FileTextOutlined,
   EyeOutlined, EyeInvisibleOutlined, CopyOutlined,
-  WarningOutlined,
+  WarningOutlined, UserOutlined,
 } from '@ant-design/icons'
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as ReTooltip,
@@ -29,6 +29,20 @@ export default function Dashboard() {
 
   const loadData = () => {
     setLoading(true)
+    const userStr = localStorage.getItem('admin_user')
+    const user = userStr ? JSON.parse(userStr) : null
+    const isAdmin = user?.role === 'admin'
+
+    // 非管理员只加载用量记录
+    if (!isAdmin) {
+      api.get('/admin/usage/list?page_size=10')
+        .then((u) => { setUsageData(u.items) })
+        .catch(() => {})
+        .finally(() => setLoading(false))
+      return
+    }
+
+    // 管理员加载全部数据
     Promise.all([
       api.get('/admin/usage/list?page_size=10'),
       api.get('/admin/deepseek/summary'),
@@ -46,7 +60,6 @@ export default function Dashboard() {
 
   useEffect(() => { loadData() }, [])
 
-  // -- 通用格式化 --
   const formatNum = (n) => {
     if (!n || isNaN(n)) return '0'
     if (n >= 100000000) return (n / 100000000).toFixed(1) + '亿'
@@ -59,7 +72,6 @@ export default function Dashboard() {
     return n.toFixed(2)
   }
 
-  // -- API Key 操作 --
   const handleReveal = async (trackingId) => {
     if (revealedKeys[trackingId]) {
       setRevealedKeys(prev => ({ ...prev, [trackingId]: false }))
@@ -68,31 +80,32 @@ export default function Dashboard() {
     setRevealing(prev => ({ ...prev, [trackingId]: true }))
     try {
       const res = await api.post('/admin/deepseek/api-keys/reveal', { tracking_id: trackingId })
-      if (res?.success && res?.key) {
-        setRevealedKeys(prev => ({ ...prev, [trackingId]: res.key }))
-      }
+      if (res?.success && res?.key) setRevealedKeys(prev => ({ ...prev, [trackingId]: res.key }))
     } catch (e) {
       message.error('获取完整 Key 失败')
-    } finally {
-      setRevealing(prev => ({ ...prev, [trackingId]: false }))
-    }
+    } finally { setRevealing(prev => ({ ...prev, [trackingId]: false })) }
   }
   const handleCopy = (text) => {
     navigator.clipboard.writeText(text).then(() => message.success('已复制'))
   }
 
-  // -- 解析 DeepSeek 数据 --
   const wallets = summary?.normal_wallets || []
   const cnyWallet = wallets.find(w => w.currency === 'CNY') || {}
   const usdWallet = wallets.find(w => w.currency === 'USD') || {}
   const monthlyCosts = summary?.monthly_costs || []
   const cnyCost = monthlyCosts.find(c => c.currency === 'CNY') || {}
+  const usdCost = monthlyCosts.find(c => c.currency === 'USD') || {}
+  const isAdmin = (() => {
+    try {
+      const u = JSON.parse(localStorage.getItem('admin_user') || '{}')
+      return u?.role === 'admin'
+    } catch { return false }
+  })()
 
-  // -- 柱形图 --
+  // 柱形图数据
   const amountData = usage?.amount?.data?.biz_data
   const days = amountData?.days || []
-  const allDays = days
-    .filter(d => d.data?.some(m => m.usage?.some(u => parseInt(u.amount) > 0)))
+  const allDays = days.filter(d => d.data?.some(m => m.usage?.some(u => parseInt(u.amount) > 0)))
     .map(d => {
       const v4pro = d.data?.find(x => x.model === 'deepseek-v4-pro')
       const v4flash = d.data?.find(x => x.model === 'deepseek-v4-flash')
@@ -106,14 +119,11 @@ export default function Dashboard() {
         return req ? parseInt(req.amount || '0') : 0
       }
       return {
-        date: d.date,
-        shortDate: d.date.slice(5),
-        v4pro: getTotal(v4pro),
-        v4flash: getTotal(v4flash),
+        date: d.date, shortDate: d.date.slice(5),
+        v4pro: getTotal(v4pro), v4flash: getTotal(v4flash),
         requests: getRequests(v4pro) + getRequests(v4flash),
       }
-    })
-    .sort((a, b) => b.date.localeCompare(a.date))
+    }).sort((a, b) => b.date.localeCompare(a.date))
 
   let filtered = allDays
   if (dateRange[0] && dateRange[1]) {
@@ -129,7 +139,7 @@ export default function Dashboard() {
     return v.toLocaleString()
   }
 
-  const CustomTooltip = ({ active, payload, label }) => {
+  const ChartTooltip = ({ active, payload, label }) => {
     if (!active || !payload?.length) return null
     const day = chartData.find(d => d.shortDate === label)
     if (!day) return null
@@ -144,7 +154,6 @@ export default function Dashboard() {
     )
   }
 
-  // -- API Key 表格 --
   const keyColumns = [
     {
       title: '名称', dataIndex: 'name',
@@ -184,7 +193,6 @@ export default function Dashboard() {
     },
   ]
 
-  // -- 消耗记录表 --
   const usageColumns = [
     { title: '时间', dataIndex: 'usage_time', render: (t) => dayjs(t).format('YYYY-MM-DD HH:mm:ss') },
     { title: '用户ID', dataIndex: 'user_id' },
@@ -196,7 +204,6 @@ export default function Dashboard() {
 
   if (loading) return <Spin size="large" style={{ display: 'block', textAlign: 'center', marginTop: 80 }} />
 
-  // -- 用量表、费用表 --
   const typeLabels = { PROMPT_TOKEN: '提示 Token', PROMPT_CACHE_HIT_TOKEN: '缓存命中', PROMPT_CACHE_MISS_TOKEN: '缓存未命中', RESPONSE_TOKEN: '回复 Token', REQUEST: '请求次数' }
   const costTypeLabels = { PROMPT_TOKEN: '提示', PROMPT_CACHE_HIT_TOKEN: '缓存命中', PROMPT_CACHE_MISS_TOKEN: '缓存未命中', RESPONSE_TOKEN: '回复', REQUEST: '请求' }
   const amountDataInner = usage?.amount?.data?.biz_data
@@ -204,136 +211,146 @@ export default function Dashboard() {
   const costArr = Array.isArray(costData) ? costData : []
 
   return (
-    <div>
-      {/* ===== 刷新按钮 ===== */}
-      <div style={{ marginBottom: 16, textAlign: 'right' }}>
+    <div style={{ maxWidth: 1400, margin: '0 auto' }}>
+      {/* ===== 刷新 ===== */}
+      <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'flex-end' }}>
         <Button icon={<ReloadOutlined />} onClick={loadData} loading={loading}>刷新数据</Button>
       </div>
 
-      {/* ===== DeepSeek 余额 + 用量概览 ===== */}
-      <Row gutter={16} style={{ marginBottom: 16 }}>
-        <Col span={12}>
-          <Card style={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', borderRadius: 16, border: 'none' }}
-            bodyStyle={{ padding: '28px 24px' }}>
-            <div style={{ color: 'rgba(255,255,255,0.8)', fontSize: 14, marginBottom: 8 }}>
-              <DollarOutlined style={{ marginRight: 6 }} />DeepSeek CNY 余额
+      {/* ===== 第1行：DeepSeek 核心数据（仅管理员） ===== */}
+      {isAdmin && (
+        <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
+        <Col xs={24} lg={8}>
+          <Card style={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', borderRadius: 12, border: 'none', height: '100%' }}
+            bodyStyle={{ padding: '24px' }}>
+            <div style={{ color: 'rgba(255,255,255,0.8)', fontSize: 13, marginBottom: 12 }}>
+              <DollarOutlined style={{ marginRight: 6 }} />DeepSeek 余额
             </div>
-            <div style={{ fontSize: 42, fontWeight: 700, color: '#fff', marginBottom: 4 }}>
+            <div style={{ fontSize: 36, fontWeight: 700, color: '#fff', marginBottom: 8 }}>
               ¥{formatBalance(cnyWallet.balance)}
             </div>
-            <div style={{ color: 'rgba(255,255,255,0.65)', fontSize: 13 }}>
-              <span>可兑换约 {formatNum(cnyWallet.token_estimation)} Tokens</span>
-              <span style={{ margin: '0 12px' }}>|</span>
-              <span>本月费用 ¥{formatBalance(cnyCost.amount)}</span>
+            <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap' }}>
+              <div style={{ color: 'rgba(255,255,255,0.65)', fontSize: 12 }}>
+                <span style={{ opacity: 0.6 }}>Token 估值</span>
+                <div style={{ fontSize: 16, fontWeight: 600, color: '#fff', marginTop: 2 }}>
+                  {formatNum(cnyWallet.token_estimation)}
+                </div>
+              </div>
+              <div style={{ color: 'rgba(255,255,255,0.65)', fontSize: 12 }}>
+                <span style={{ opacity: 0.6 }}>本月费用</span>
+                <div style={{ fontSize: 16, fontWeight: 600, color: '#fff', marginTop: 2 }}>
+                  ¥{formatBalance(cnyCost.amount)}
+                </div>
+              </div>
+              <div style={{ color: 'rgba(255,255,255,0.65)', fontSize: 12 }}>
+                <span style={{ opacity: 0.6 }}>USD 余额</span>
+                <div style={{ fontSize: 16, fontWeight: 600, color: '#fff', marginTop: 2 }}>
+                  ${formatBalance(usdWallet.balance)}
+                </div>
+              </div>
             </div>
           </Card>
         </Col>
-        <Col span={6}>
-          <Card style={{ borderRadius: 12 }}>
-            <div style={{ color: '#999', fontSize: 13, marginBottom: 4 }}><FileTextOutlined style={{ marginRight: 6 }} />本月 Token 用量</div>
-            <div style={{ fontSize: 28, fontWeight: 700, color: '#667eea' }}>
+        <Col xs={12} lg={4}>
+          <Card style={{ borderRadius: 12, height: '100%' }} bodyStyle={{ padding: '20px' }}>
+            <div style={{ color: '#999', fontSize: 12, marginBottom: 8 }}>
+              <FileTextOutlined style={{ marginRight: 4 }} />本月 Token 用量
+            </div>
+            <div style={{ fontSize: 26, fontWeight: 700, color: '#667eea' }}>
               {formatNum(summary?.monthly_token_usage || 0)}
-              <span style={{ fontSize: 14, fontWeight: 400, marginLeft: 4, opacity: 0.6 }}>个</span>
             </div>
           </Card>
         </Col>
-        <Col span={6}>
-          <Card style={{ borderRadius: 12 }}>
-            <div style={{ color: '#999', fontSize: 13, marginBottom: 4 }}><RiseOutlined style={{ marginRight: 6 }} />可用 Token 估值</div>
-            <div style={{ fontSize: 28, fontWeight: 700, color: '#52c41a' }}>
+        <Col xs={12} lg={4}>
+          <Card style={{ borderRadius: 12, height: '100%' }} bodyStyle={{ padding: '20px' }}>
+            <div style={{ color: '#999', fontSize: 12, marginBottom: 8 }}>
+              <RiseOutlined style={{ marginRight: 4 }} />可用 Token 估值
+            </div>
+            <div style={{ fontSize: 26, fontWeight: 700, color: '#52c41a' }}>
               {formatNum(summary?.total_available_token_estimation || 0)}
-              <span style={{ fontSize: 14, fontWeight: 400, marginLeft: 4, opacity: 0.6 }}>个</span>
+            </div>
+          </Card>
+        </Col>
+        <Col xs={12} lg={4}>
+          <Card style={{ borderRadius: 12, height: '100%' }} bodyStyle={{ padding: '20px' }}>
+            <div style={{ color: '#999', fontSize: 12, marginBottom: 8 }}>
+              <WalletOutlined style={{ marginRight: 4 }} />今日充值
+            </div>
+            <div style={{ fontSize: 26, fontWeight: 700, color: '#52c41a' }}>
+              ¥{(stats?.today_total_recharge || 0).toFixed(2)}
+            </div>
+          </Card>
+        </Col>
+        <Col xs={12} lg={4}>
+          <Card style={{ borderRadius: 12, height: '100%' }} bodyStyle={{ padding: '20px' }}>
+            <div style={{ color: '#999', fontSize: 12, marginBottom: 8 }}>
+              <UserOutlined style={{ marginRight: 4 }} />总用户 / 活跃
+            </div>
+            <div style={{ fontSize: 26, fontWeight: 700, color: '#1677ff' }}>
+              {stats?.total_users || 0}
+              <span style={{ fontSize: 14, fontWeight: 400, color: '#999', marginLeft: 6 }}>
+                / {stats?.active_users || 0}
+              </span>
             </div>
           </Card>
         </Col>
       </Row>
+      )}
 
-      {/* ===== API 密钥 + 账户钱包 ===== */}
-      <Row gutter={16} style={{ marginBottom: 16 }}>
-        <Col span={12}>
-          <Card title="🔐 API 密钥管理" style={{ borderRadius: 12 }} bodyStyle={{ padding: 0 }}>
-            <Table dataSource={apiKeys} columns={keyColumns} rowKey="tracking_id" pagination={false}
-              size="small" locale={{ emptyText: '暂无 API Key' }} />
-          </Card>
-        </Col>
-        <Col span={12}>
-          <Card title="💰 账户钱包" style={{ borderRadius: 12, height: '100%' }}>
-            <Row gutter={[16, 16]}>
-              <Col span={12}>
-                <div style={{ background: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)', borderRadius: 12, padding: 20, color: '#fff' }}>
-                  <div style={{ fontSize: 12, opacity: 0.8, marginBottom: 8 }}>CNY 钱包</div>
-                  <div style={{ fontSize: 28, fontWeight: 700 }}>¥{formatBalance(cnyWallet.balance)}</div>
-                  <div style={{ fontSize: 12, opacity: 0.7, marginTop: 4 }}>≈ {formatNum(cnyWallet.token_estimation)} Tokens</div>
-                </div>
-              </Col>
-              <Col span={12}>
-                <div style={{ background: 'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)', borderRadius: 12, padding: 20, color: '#fff' }}>
-                  <div style={{ fontSize: 12, opacity: 0.8, marginBottom: 8 }}>USD 钱包</div>
-                  <div style={{ fontSize: 28, fontWeight: 700 }}>${formatBalance(usdWallet.balance)}</div>
-                  <div style={{ fontSize: 12, opacity: 0.7, marginTop: 4 }}>≈ {formatNum(usdWallet.token_estimation)} Tokens</div>
-                </div>
-              </Col>
-              <Col span={24}>
-                <div style={{ background: '#f9f9f9', borderRadius: 12, padding: 16 }}>
-                  <div style={{ fontSize: 13, color: '#666', marginBottom: 8 }}>本月费用</div>
-                  <div style={{ display: 'flex', gap: 24 }}>
-                    <div>
-                      <span style={{ color: '#999', fontSize: 12 }}>CNY</span>
-                      <div style={{ fontSize: 20, fontWeight: 600, color: '#f5576c' }}>¥{formatBalance(cnyCost.amount)}</div>
-                    </div>
-                    <div>
-                      <span style={{ color: '#999', fontSize: 12 }}>USD</span>
-                      <div style={{ fontSize: 20, fontWeight: 600, color: '#4facfe' }}>
-                        ${formatBalance((monthlyCosts.find(c => c.currency === 'USD') || {}).amount)}
-                      </div>
-                    </div>
-                    <div>
-                      <span style={{ color: '#999', fontSize: 12 }}>本月 Token</span>
-                      <div style={{ fontSize: 20, fontWeight: 600, color: '#667eea' }}>{formatNum(summary?.monthly_token_usage || 0)}</div>
-                    </div>
-                  </div>
-                </div>
-              </Col>
-            </Row>
-          </Card>
-        </Col>
-      </Row>
+      {/* ===== 第2行起：管理员专属内容 ===== */}
+      {isAdmin && (<>
+      <Card title="🔐 API 密钥管理" style={{ borderRadius: 12, marginBottom: 16 }} bodyStyle={{ padding: 0 }}>
+        <Table dataSource={apiKeys} columns={keyColumns} rowKey="tracking_id" pagination={false}
+          size="small" locale={{ emptyText: '暂无 API Key' }} />
+      </Card>
 
-      {/* ===== 充值统计卡片 ===== */}
-      <Row gutter={16} style={{ marginBottom: 24 }}>
-        <Col span={8}>
-          <Card style={{ borderRadius: 12, background: 'linear-gradient(135deg, #52c41a 0%, #237804 100%)', color: '#fff', border: 'none' }} bodyStyle={{ padding: '20px 24px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-              <WalletOutlined style={{ fontSize: 20 }} /><span style={{ fontSize: 14, opacity: 0.85 }}>今日充值成功</span>
-            </div>
-            <div style={{ fontSize: 32, fontWeight: 700 }}>¥{(stats?.today_total_recharge || 0).toFixed(2)}</div>
-          </Card>
-        </Col>
-        <Col span={8}>
-          <Card style={{ borderRadius: 12, background: 'linear-gradient(135deg, #1677ff 0%, #0958d9 100%)', color: '#fff', border: 'none' }} bodyStyle={{ padding: '20px 24px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-              <WalletOutlined style={{ fontSize: 20 }} /><span style={{ fontSize: 14, opacity: 0.85 }}>历史充值成功总额</span>
-            </div>
-            <div style={{ fontSize: 32, fontWeight: 700 }}>¥{(stats?.total_recharge_amount || 0).toFixed(2)}</div>
-          </Card>
-        </Col>
-        <Col span={4}>
-          <Card style={{ borderRadius: 12, background: 'linear-gradient(135deg, #fa8c16 0%, #d46b08 100%)', color: '#fff', border: 'none' }} bodyStyle={{ padding: '20px 24px' }}>
-            <div style={{ fontSize: 12, opacity: 0.85, marginBottom: 8 }}>总用户</div>
-            <div style={{ fontSize: 28, fontWeight: 700 }}>{stats?.total_users || 0}</div>
-          </Card>
-        </Col>
-        <Col span={4}>
-          <Card style={{ borderRadius: 12, background: 'linear-gradient(135deg, #eb2f96 0%, #c41d7f 100%)', color: '#fff', border: 'none' }} bodyStyle={{ padding: '20px 24px' }}>
-            <div style={{ fontSize: 12, opacity: 0.85, marginBottom: 8 }}>活跃用户</div>
-            <div style={{ fontSize: 28, fontWeight: 700 }}>{stats?.active_users || 0}</div>
-          </Card>
-        </Col>
-      </Row>
-
-      {/* ===== 本月 Token 用量（按模型） ===== */}
-      <Row gutter={16} style={{ marginBottom: 16 }}>
+      {/* ===== 第3行：充值统计 ===== */}
+      <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
         <Col span={24}>
+          <Row gutter={16}>
+            <Col span={8}>
+              <Card style={{
+                borderRadius: 12, background: 'linear-gradient(135deg, #52c41a 0%, #237804 100%)',
+                color: '#fff', border: 'none',
+              }} bodyStyle={{ padding: '20px 24px' }}>
+                <div style={{ fontSize: 13, opacity: 0.85, marginBottom: 4 }}>历史充值成功总额</div>
+                <div style={{ fontSize: 32, fontWeight: 700 }}>¥{(stats?.total_recharge_amount || 0).toFixed(2)}</div>
+              </Card>
+            </Col>
+            <Col span={8}>
+              <Card style={{
+                borderRadius: 12, background: 'linear-gradient(135deg, #1677ff 0%, #0958d9 100%)',
+                color: '#fff', border: 'none',
+              }} bodyStyle={{ padding: '20px 24px' }}>
+                <div style={{ fontSize: 13, opacity: 0.85, marginBottom: 4 }}>今日充值成功</div>
+                <div style={{ fontSize: 32, fontWeight: 700 }}>¥{(stats?.today_total_recharge || 0).toFixed(2)}</div>
+              </Card>
+            </Col>
+            <Col span={4}>
+              <Card style={{
+                borderRadius: 12, background: 'linear-gradient(135deg, #fa8c16 0%, #d46b08 100%)',
+                color: '#fff', border: 'none',
+              }} bodyStyle={{ padding: '20px 24px' }}>
+                <div style={{ fontSize: 12, opacity: 0.85, marginBottom: 4 }}>总用户</div>
+                <div style={{ fontSize: 28, fontWeight: 700 }}>{stats?.total_users || 0}</div>
+              </Card>
+            </Col>
+            <Col span={4}>
+              <Card style={{
+                borderRadius: 12, background: 'linear-gradient(135deg, #eb2f96 0%, #c41d7f 100%)',
+                color: '#fff', border: 'none',
+              }} bodyStyle={{ padding: '20px 24px' }}>
+                <div style={{ fontSize: 12, opacity: 0.85, marginBottom: 4 }}>活跃用户</div>
+                <div style={{ fontSize: 28, fontWeight: 700 }}>{stats?.active_users || 0}</div>
+              </Card>
+            </Col>
+          </Row>
+        </Col>
+      </Row>
+
+      {/* ===== 第4行：用量 + 费用并排 ===== */}
+      <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
+        <Col xs={24} lg={12}>
           <Card title="📊 本月 Token 用量（按模型）" style={{ borderRadius: 12 }}>
             {(() => {
               const totals = amountDataInner?.total || []
@@ -355,18 +372,14 @@ export default function Dashboard() {
             })()}
           </Card>
         </Col>
-      </Row>
-
-      {/* ===== 本月费用 + 每日趋势 ===== */}
-      <Row gutter={16} style={{ marginBottom: 16 }}>
-        <Col span={12}>
+        <Col xs={24} lg={12}>
           <Card title="💰 本月费用（按模型）" style={{ borderRadius: 12 }}>
             {costArr.length ? costArr.map((currData, idx) => {
               const totals = currData?.total || []
               const currency = currData?.currency || 'CNY'
               return (
                 <div key={idx} style={{ marginBottom: idx < costArr.length - 1 ? 16 : 0 }}>
-                  <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 8, color: '#667eea' }}>
+                  <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8, color: '#667eea' }}>
                     {currency === 'CNY' ? '🇨🇳 CNY' : '🇺🇸 USD'}
                   </div>
                   <Table dataSource={totals} rowKey="model" pagination={false} size="small"
@@ -394,39 +407,40 @@ export default function Dashboard() {
             }) : <div style={{ color: '#999', textAlign: 'center', padding: 20 }}>暂无数据</div>}
           </Card>
         </Col>
-        <Col span={12}>
-          <Card title="📈 每日 Token 用量趋势" style={{ borderRadius: 12 }}
-            extra={
-              <DatePicker.RangePicker size="small" placeholder={['起始日期', '结束日期']}
-                value={dateRange} onChange={(dates) => setDateRange(dates || [null, null])}
-                allowClear style={{ width: 240 }} />
-            }
-          >
-            {chartData.length ? (
-              <div>
-                <div style={{ marginBottom: 8, fontSize: 12, color: '#999' }}>
-                  共 {filtered.length} 天数据，显示最近 {chartData.length} 天
-                  {filtered.length > 10 && <span style={{ marginLeft: 8, color: '#667eea' }}>（选择日期区间可查看更多）</span>}
-                </div>
-                <ResponsiveContainer width="100%" height={280}>
-                  <BarChart data={chartData} barGap={4} barCategoryGap={8}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                    <XAxis dataKey="shortDate" tick={{ fontSize: 11, fill: '#888' }} axisLine={{ stroke: '#e8e8e8' }} />
-                    <YAxis tick={{ fontSize: 11, fill: '#888' }} axisLine={{ stroke: '#e8e8e8' }} tickFormatter={formatShort} />
-                    <ReTooltip content={<CustomTooltip />} cursor={{ fill: 'rgba(102, 126, 234, 0.08)' }} />
-                    <Legend wrapperStyle={{ fontSize: 12, paddingTop: 8 }} />
-                    <Bar dataKey="v4pro" name="V4-Pro" fill="#667eea" radius={[4, 4, 0, 0]} maxBarSize={36} />
-                    <Bar dataKey="v4flash" name="V4-Flash" fill="#52c41a" radius={[4, 4, 0, 0]} maxBarSize={36} />
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-            ) : <div style={{ color: '#999', textAlign: 'center', padding: 20 }}>暂无数据</div>}
-          </Card>
-        </Col>
       </Row>
 
+      {/* ===== 第5行：趋势图表（全宽） ===== */}
+      <Card title="📈 每日 Token 用量趋势" style={{ borderRadius: 12, marginBottom: 16 }}
+        extra={
+          <DatePicker.RangePicker size="small" placeholder={['起始日期', '结束日期']}
+            value={dateRange} onChange={(dates) => setDateRange(dates || [null, null])}
+            allowClear style={{ width: 240 }} />
+        }
+      >
+        {chartData.length ? (
+          <div>
+            <div style={{ marginBottom: 8, fontSize: 12, color: '#999' }}>
+              共 {filtered.length} 天数据，显示最近 {chartData.length} 天
+              {filtered.length > 10 && <span style={{ marginLeft: 8, color: '#667eea' }}>（选择日期区间可查看更多）</span>}
+            </div>
+            <ResponsiveContainer width="100%" height={300}>
+              <BarChart data={chartData} barGap={4} barCategoryGap={8}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                <XAxis dataKey="shortDate" tick={{ fontSize: 11, fill: '#888' }} axisLine={{ stroke: '#e8e8e8' }} />
+                <YAxis tick={{ fontSize: 11, fill: '#888' }} axisLine={{ stroke: '#e8e8e8' }} tickFormatter={formatShort} />
+                <ReTooltip content={<ChartTooltip />} cursor={{ fill: 'rgba(102, 126, 234, 0.08)' }} />
+                <Legend wrapperStyle={{ fontSize: 12, paddingTop: 8 }} />
+                <Bar dataKey="v4pro" name="V4-Pro" fill="#667eea" radius={[4, 4, 0, 0]} maxBarSize={36} />
+                <Bar dataKey="v4flash" name="V4-Flash" fill="#52c41a" radius={[4, 4, 0, 0]} maxBarSize={36} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        ) : <div style={{ color: '#999', textAlign: 'center', padding: 20 }}>暂无数据</div>}
+      </Card>
+      </>)}
+
       {/* ===== 最新消耗记录 ===== */}
-      <Card title="最新消耗记录" style={{ borderRadius: 12 }}>
+      <Card title="最新消耗记录" style={{ borderRadius: 12, marginBottom: 16 }}>
         <Table dataSource={usageData} columns={usageColumns} rowKey="id" pagination={false} size="small" />
       </Card>
 
