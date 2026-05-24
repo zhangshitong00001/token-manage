@@ -211,87 +211,74 @@ export default function Dashboard() {
   const costArr = Array.isArray(costData) ? costData : []
 
   return (
-    <div style={{ maxWidth: 1400, margin: '0 auto' }}>
+    <div>
       {/* ===== 刷新 ===== */}
       <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'flex-end' }}>
         <Button icon={<ReloadOutlined />} onClick={loadData} loading={loading}>刷新数据</Button>
       </div>
 
-      {/* ===== 第1行：DeepSeek 核心数据（仅管理员） ===== */}
+      {/* ===== 第1行：顶部概览（仅管理员） ===== */}
       {isAdmin && (
-        <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
-        <Col xs={24} lg={8}>
+        <Row gutter={[12, 12]} style={{ marginBottom: 16 }}>
+        <Col xs={24} lg={6}>
           <Card style={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', borderRadius: 12, border: 'none', height: '100%' }}
-            bodyStyle={{ padding: '24px' }}>
-            <div style={{ color: 'rgba(255,255,255,0.8)', fontSize: 13, marginBottom: 12 }}>
-              <DollarOutlined style={{ marginRight: 6 }} />DeepSeek 余额
+            bodyStyle={{ padding: '20px' }}>
+            <div style={{ color: 'rgba(255,255,255,0.8)', fontSize: 12, marginBottom: 10 }}>
+              <DollarOutlined style={{ marginRight: 4 }} />DeepSeek 余额
             </div>
-            <div style={{ fontSize: 36, fontWeight: 700, color: '#fff', marginBottom: 8 }}>
+            <div style={{ fontSize: 30, fontWeight: 700, color: '#fff', marginBottom: 6 }}>
               ¥{formatBalance(cnyWallet.balance)}
             </div>
-            <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap' }}>
-              <div style={{ color: 'rgba(255,255,255,0.65)', fontSize: 12 }}>
+            <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
+              <div style={{ color: 'rgba(255,255,255,0.65)', fontSize: 11 }}>
                 <span style={{ opacity: 0.6 }}>Token 估值</span>
-                <div style={{ fontSize: 16, fontWeight: 600, color: '#fff', marginTop: 2 }}>
-                  {formatNum(cnyWallet.token_estimation)}
-                </div>
+                <div style={{ fontSize: 14, fontWeight: 600, color: '#fff', marginTop: 1 }}>{formatNum(cnyWallet.token_estimation)}</div>
               </div>
-              <div style={{ color: 'rgba(255,255,255,0.65)', fontSize: 12 }}>
-                <span style={{ opacity: 0.6 }}>本月费用</span>
-                <div style={{ fontSize: 16, fontWeight: 600, color: '#fff', marginTop: 2 }}>
-                  ¥{formatBalance(cnyCost.amount)}
-                </div>
+              <div style={{ color: 'rgba(255,255,255,0.65)', fontSize: 11 }}>
+                <span style={{ opacity: 0.6 }}>本月费</span>
+                <div style={{ fontSize: 14, fontWeight: 600, color: '#fff', marginTop: 1 }}>¥{formatBalance(cnyCost.amount)}</div>
               </div>
-              <div style={{ color: 'rgba(255,255,255,0.65)', fontSize: 12 }}>
-                <span style={{ opacity: 0.6 }}>USD 余额</span>
-                <div style={{ fontSize: 16, fontWeight: 600, color: '#fff', marginTop: 2 }}>
-                  ${formatBalance(usdWallet.balance)}
-                </div>
+              <div style={{ color: 'rgba(255,255,255,0.65)', fontSize: 11 }}>
+                <span style={{ opacity: 0.6 }}>USD</span>
+                <div style={{ fontSize: 14, fontWeight: 600, color: '#fff', marginTop: 1 }}>${formatBalance(usdWallet.balance)}</div>
               </div>
             </div>
           </Card>
         </Col>
-        <Col xs={12} lg={4}>
-          <Card style={{ borderRadius: 12, height: '100%' }} bodyStyle={{ padding: '20px' }}>
-            <div style={{ color: '#999', fontSize: 12, marginBottom: 8 }}>
-              <FileTextOutlined style={{ marginRight: 4 }} />本月 Token 用量
-            </div>
-            <div style={{ fontSize: 26, fontWeight: 700, color: '#667eea' }}>
-              {formatNum(summary?.monthly_token_usage || 0)}
-            </div>
+        <Col xs={12} lg={3}>
+          <Card style={{ borderRadius: 12, height: '100%' }} bodyStyle={{ padding: '16px' }}>
+            <div style={{ color: '#999', fontSize: 11, marginBottom: 6 }}><FileTextOutlined style={{ marginRight: 4 }} />本月 Token</div>
+            <div style={{ fontSize: 22, fontWeight: 700, color: '#667eea' }}>{formatNum(summary?.monthly_token_usage || 0)}</div>
           </Card>
         </Col>
-        <Col xs={12} lg={4}>
-          <Card style={{ borderRadius: 12, height: '100%' }} bodyStyle={{ padding: '20px' }}>
-            <div style={{ color: '#999', fontSize: 12, marginBottom: 8 }}>
-              <RiseOutlined style={{ marginRight: 4 }} />可用 Token 估值
-            </div>
-            <div style={{ fontSize: 26, fontWeight: 700, color: '#52c41a' }}>
-              {formatNum(summary?.total_available_token_estimation || 0)}
-            </div>
+        <Col xs={12} lg={3}>
+          <Card style={{ borderRadius: 12, height: '100%' }} bodyStyle={{ padding: '16px' }}>
+            <div style={{ color: '#999', fontSize: 11, marginBottom: 6 }}><RiseOutlined style={{ marginRight: 4 }} />可用 Token</div>
+            <div style={{ fontSize: 22, fontWeight: 700, color: '#52c41a' }}>{formatNum(summary?.total_available_token_estimation || 0)}</div>
           </Card>
         </Col>
-        <Col xs={12} lg={4}>
-          <Card style={{ borderRadius: 12, height: '100%' }} bodyStyle={{ padding: '20px' }}>
-            <div style={{ color: '#999', fontSize: 12, marginBottom: 8 }}>
-              <WalletOutlined style={{ marginRight: 4 }} />今日充值
-            </div>
-            <div style={{ fontSize: 26, fontWeight: 700, color: '#52c41a' }}>
-              ¥{(stats?.today_total_recharge || 0).toFixed(2)}
-            </div>
+        <Col xs={12} lg={3}>
+          <Card style={{ borderRadius: 12, height: '100%', background: 'linear-gradient(135deg, #52c41a 0%, #237804 100%)', color: '#fff', border: 'none' }} bodyStyle={{ padding: '16px' }}>
+            <div style={{ fontSize: 11, opacity: 0.85, marginBottom: 6 }}>今日充值成功</div>
+            <div style={{ fontSize: 22, fontWeight: 700 }}>¥{(stats?.today_total_recharge || 0).toFixed(2)}</div>
           </Card>
         </Col>
-        <Col xs={12} lg={4}>
-          <Card style={{ borderRadius: 12, height: '100%' }} bodyStyle={{ padding: '20px' }}>
-            <div style={{ color: '#999', fontSize: 12, marginBottom: 8 }}>
-              <UserOutlined style={{ marginRight: 4 }} />总用户 / 活跃
-            </div>
-            <div style={{ fontSize: 26, fontWeight: 700, color: '#1677ff' }}>
-              {stats?.total_users || 0}
-              <span style={{ fontSize: 14, fontWeight: 400, color: '#999', marginLeft: 6 }}>
-                / {stats?.active_users || 0}
-              </span>
-            </div>
+        <Col xs={12} lg={3}>
+          <Card style={{ borderRadius: 12, height: '100%', background: 'linear-gradient(135deg, #1677ff 0%, #0958d9 100%)', color: '#fff', border: 'none' }} bodyStyle={{ padding: '16px' }}>
+            <div style={{ fontSize: 11, opacity: 0.85, marginBottom: 6 }}>历史充值总额</div>
+            <div style={{ fontSize: 22, fontWeight: 700 }}>¥{(stats?.total_recharge_amount || 0).toFixed(2)}</div>
+          </Card>
+        </Col>
+        <Col xs={12} lg={3}>
+          <Card style={{ borderRadius: 12, height: '100%', background: 'linear-gradient(135deg, #fa8c16 0%, #d46b08 100%)', color: '#fff', border: 'none' }} bodyStyle={{ padding: '16px' }}>
+            <div style={{ fontSize: 11, opacity: 0.85, marginBottom: 6 }}>总用户</div>
+            <div style={{ fontSize: 22, fontWeight: 700 }}>{stats?.total_users || 0}</div>
+          </Card>
+        </Col>
+        <Col xs={12} lg={3}>
+          <Card style={{ borderRadius: 12, height: '100%', background: 'linear-gradient(135deg, #eb2f96 0%, #c41d7f 100%)', color: '#fff', border: 'none' }} bodyStyle={{ padding: '16px' }}>
+            <div style={{ fontSize: 11, opacity: 0.85, marginBottom: 6 }}>活跃用户</div>
+            <div style={{ fontSize: 22, fontWeight: 700 }}>{stats?.active_users || 0}</div>
           </Card>
         </Col>
       </Row>
@@ -304,51 +291,7 @@ export default function Dashboard() {
           size="small" locale={{ emptyText: '暂无 API Key' }} />
       </Card>
 
-      {/* ===== 第3行：充值统计 ===== */}
-      <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
-        <Col span={24}>
-          <Row gutter={16}>
-            <Col span={8}>
-              <Card style={{
-                borderRadius: 12, background: 'linear-gradient(135deg, #52c41a 0%, #237804 100%)',
-                color: '#fff', border: 'none',
-              }} bodyStyle={{ padding: '20px 24px' }}>
-                <div style={{ fontSize: 13, opacity: 0.85, marginBottom: 4 }}>历史充值成功总额</div>
-                <div style={{ fontSize: 32, fontWeight: 700 }}>¥{(stats?.total_recharge_amount || 0).toFixed(2)}</div>
-              </Card>
-            </Col>
-            <Col span={8}>
-              <Card style={{
-                borderRadius: 12, background: 'linear-gradient(135deg, #1677ff 0%, #0958d9 100%)',
-                color: '#fff', border: 'none',
-              }} bodyStyle={{ padding: '20px 24px' }}>
-                <div style={{ fontSize: 13, opacity: 0.85, marginBottom: 4 }}>今日充值成功</div>
-                <div style={{ fontSize: 32, fontWeight: 700 }}>¥{(stats?.today_total_recharge || 0).toFixed(2)}</div>
-              </Card>
-            </Col>
-            <Col span={4}>
-              <Card style={{
-                borderRadius: 12, background: 'linear-gradient(135deg, #fa8c16 0%, #d46b08 100%)',
-                color: '#fff', border: 'none',
-              }} bodyStyle={{ padding: '20px 24px' }}>
-                <div style={{ fontSize: 12, opacity: 0.85, marginBottom: 4 }}>总用户</div>
-                <div style={{ fontSize: 28, fontWeight: 700 }}>{stats?.total_users || 0}</div>
-              </Card>
-            </Col>
-            <Col span={4}>
-              <Card style={{
-                borderRadius: 12, background: 'linear-gradient(135deg, #eb2f96 0%, #c41d7f 100%)',
-                color: '#fff', border: 'none',
-              }} bodyStyle={{ padding: '20px 24px' }}>
-                <div style={{ fontSize: 12, opacity: 0.85, marginBottom: 4 }}>活跃用户</div>
-                <div style={{ fontSize: 28, fontWeight: 700 }}>{stats?.active_users || 0}</div>
-              </Card>
-            </Col>
-          </Row>
-        </Col>
-      </Row>
-
-      {/* ===== 第4行：用量 + 费用并排 ===== */}
+      {/* ===== 用量 + 费用并排 ===== */}
       <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
         <Col xs={24} lg={12}>
           <Card title="📊 本月 Token 用量（按模型）" style={{ borderRadius: 12 }}>
