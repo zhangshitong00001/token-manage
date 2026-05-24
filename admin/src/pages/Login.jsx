@@ -1,9 +1,18 @@
 import React, { useState, useRef, useEffect } from 'react'
-import { Form, Input, Button, Card, message, Typography, Space, Alert, Tabs } from 'antd'
-import { MailOutlined, SafetyCertificateOutlined, LockOutlined, UserOutlined, KeyOutlined } from '@ant-design/icons'
+import { Form, Input, Button, Card, message, Typography, Space, Alert, Tabs, Row, Col } from 'antd'
+import { MailOutlined, SafetyCertificateOutlined, LockOutlined, UserOutlined, KeyOutlined, WalletOutlined, LineChartOutlined, RocketOutlined, SafetyOutlined, ThunderboltOutlined, MobileOutlined } from '@ant-design/icons'
 import api from '../api'
 
-const { Title, Text } = Typography
+const { Title, Text, Paragraph } = Typography
+
+const features = [
+  { icon: <WalletOutlined style={{ fontSize: 24, color: '#1677ff' }} />, title: '智能充值', desc: '支持微信/支付宝充值，多种套餐灵活选择' },
+  { icon: <LineChartOutlined style={{ fontSize: 24, color: '#722ed1' }} />, title: '实时监控', desc: 'Token 消耗实时统计，多模型用量对比' },
+  { icon: <RocketOutlined style={{ fontSize: 24, color: '#52c41a' }} />, title: '账单同步', desc: '自动同步 DeepSeek 官方账单' },
+  { icon: <SafetyOutlined style={{ fontSize: 24, color: '#fa8c16' }} />, title: '多角色权限', desc: '管理员与普通用户分离' },
+  { icon: <ThunderboltOutlined style={{ fontSize: 24, color: '#f5222d' }} />, title: 'DeepSeek 集成', desc: '原生对接 V4-Pro / V4-Flash 模型' },
+  { icon: <MobileOutlined style={{ fontSize: 24, color: '#13c2c2' }} />, title: '多端适配', desc: 'H5 移动端 + 后台管理双端' },
+]
 
 function AdminLoginForm({ onSuccess }) {
   const [loading, setLoading] = useState(false)
@@ -29,7 +38,7 @@ function AdminLoginForm({ onSuccess }) {
     }
     setCodeLoading(true)
     try {
-      const res = await api.post('/auth/admin/send-code', { email })
+      await api.post('/auth/admin/send-code', { email })
       message.success({ content: `验证码已发送到 ${email}`, duration: 3 })
       startCountdown()
     } catch (e) {
@@ -112,7 +121,6 @@ function UserLoginForm({ onSuccess, defaultEmail }) {
   const [loading, setLoading] = useState(false)
   const [form] = Form.useForm()
 
-  // 注册成功跳转时自动填充邮箱
   useEffect(() => {
     if (defaultEmail) {
       form.setFieldsValue({ email: defaultEmail })
@@ -123,7 +131,6 @@ function UserLoginForm({ onSuccess, defaultEmail }) {
     setLoading(true)
     try {
       const res = await api.post('/auth/login', { account: values.email, password: values.password })
-      // 存入 admin_token，让用户留在后台管理界面
       localStorage.setItem('admin_token', res.access_token)
       localStorage.setItem('admin_user', JSON.stringify({ ...res.user, role: 'user' }))
       localStorage.setItem('admin_login_time', Date.now().toString())
@@ -267,7 +274,7 @@ function UserRegisterForm({ onRegistered }) {
 }
 
 export default function Login({ onLogin }) {
-  const [activeTab, setActiveTab] = useState('admin')
+  const [activeTab, setActiveTab] = useState('user')
   const [registeredEmail, setRegisteredEmail] = useState('')
 
   const handleRegistered = (email) => {
@@ -278,85 +285,123 @@ export default function Login({ onLogin }) {
   return (
     <div style={{
       minHeight: '100vh',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
       background: 'linear-gradient(135deg, #0c0c2e 0%, #1a1a4e 30%, #2d1b69 60%, #667eea 100%)',
       position: 'relative',
-      overflow: 'hidden',
+      overflow: 'auto',
     }}>
-      {/* 装饰性背景圆 */}
+      {/* 装饰背景 */}
       <div style={{
-        position: 'absolute', top: '-20%', right: '-10%',
-        width: 500, height: 500, borderRadius: '50%',
+        position: 'fixed', top: '-20%', right: '-10%',
+        width: 600, height: 600, borderRadius: '50%',
         background: 'radial-gradient(circle, rgba(102,126,234,0.15) 0%, transparent 70%)',
         pointerEvents: 'none',
       }} />
       <div style={{
-        position: 'absolute', bottom: '-15%', left: '-5%',
-        width: 400, height: 400, borderRadius: '50%',
+        position: 'fixed', bottom: '-15%', left: '-5%',
+        width: 500, height: 500, borderRadius: '50%',
         background: 'radial-gradient(circle, rgba(118,75,162,0.2) 0%, transparent 70%)',
         pointerEvents: 'none',
       }} />
 
-      <Card style={{
-        width: 420, borderRadius: 16,
-        boxShadow: '0 20px 60px rgba(0,0,0,0.3)',
-        border: '1px solid rgba(255,255,255,0.1)',
-        background: 'rgba(255,255,255,0.98)',
-        backdropFilter: 'blur(10px)',
-        zIndex: 1,
-      }}>
-        <div style={{ textAlign: 'center', marginBottom: 24 }}>
+      <div style={{ maxWidth: 1100, margin: '0 auto', padding: '60px 20px 40px', position: 'relative', zIndex: 1 }}>
+
+        {/* ====== Hero / 产品介绍区 ====== */}
+        <div style={{
+          background: 'rgba(255,255,255,0.06)',
+          backdropFilter: 'blur(12px)',
+          borderRadius: 20,
+          padding: '48px 40px',
+          marginBottom: 32,
+          textAlign: 'center',
+          border: '1px solid rgba(255,255,255,0.08)',
+        }}>
           <div style={{
-            width: 56, height: 56, borderRadius: 14,
+            width: 64, height: 64, borderRadius: 16,
             background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
-            margin: '0 auto 16px',
-            fontSize: 28, color: '#fff',
-            boxShadow: '0 4px 12px rgba(102,126,234,0.4)',
+            margin: '0 auto 20px',
+            fontSize: 32, color: '#fff',
+            boxShadow: '0 8px 24px rgba(102,126,234,0.4)',
           }}>
             <KeyOutlined />
           </div>
-          <Title level={3} style={{ margin: 0 }}>TokenManager</Title>
-          <Text type="secondary">管理后台</Text>
+          <Title level={2} style={{ color: '#fff', margin: 0, fontSize: 32 }}>
+            🚀 TokenManager
+          </Title>
+          <Paragraph style={{ color: 'rgba(255,255,255,0.85)', fontSize: 16, marginTop: 12, maxWidth: 600, margin: '12px auto 0' }}>
+            轻量、高效的 AI Token 管理与用量监控平台
+          </Paragraph>
+          <Paragraph style={{ color: 'rgba(255,255,255,0.55)', fontSize: 14, maxWidth: 600, margin: '8px auto 24px' }}>
+            支持 DeepSeek 等多模型，实时统计消耗，智能充值，让每一分钱都花在刀刃上
+          </Paragraph>
+
+          {/* 核心功能卡片 */}
+          <Row gutter={[16, 16]} style={{ maxWidth: 800, margin: '0 auto' }}>
+            {features.map((f, i) => (
+              <Col xs={12} md={8} key={i}>
+                <div style={{
+                  background: 'rgba(255,255,255,0.08)',
+                  borderRadius: 12, padding: '16px 12px',
+                  textAlign: 'center', height: '100%',
+                  border: '1px solid rgba(255,255,255,0.06)',
+                }}>
+                  <div style={{ marginBottom: 8 }}>{f.icon}</div>
+                  <div style={{ color: '#fff', fontSize: 13, fontWeight: 600, marginBottom: 4 }}>{f.title}</div>
+                  <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: 11 }}>{f.desc}</div>
+                </div>
+              </Col>
+            ))}
+          </Row>
         </div>
 
-        <Tabs
-          centered
-          activeKey={activeTab}
-          onChange={setActiveTab}
-          items={[
-            {
-              key: 'admin',
-              label: '管理员登录',
-              children: (
-                <>
-                  <AdminLoginForm onSuccess={onLogin} />
-                  <Alert message="验证码将发送至您的管理员邮箱" type="info" showIcon
-                    style={{ borderRadius: 8, fontSize: 12 }} />
-                </>
-              ),
-            },
-            {
-              key: 'user',
-              label: '用户登录',
-              children: <UserLoginForm onSuccess={onLogin} defaultEmail={registeredEmail} />,
-            },
-            {
-              key: 'register',
-              label: '用户注册',
-              children: (
-                <>
-                  <UserRegisterForm onRegistered={handleRegistered} />
-                  <Alert message="注册后将在用户登录页自动填入邮箱" type="info" showIcon
-                    style={{ borderRadius: 8, fontSize: 12, marginTop: 8 }} />
-                </>
-              ),
-            },
-          ]}
-        />
-      </Card>
+        {/* ====== 登录/注册卡片 ====== */}
+        <Card style={{
+          maxWidth: 440, margin: '0 auto', borderRadius: 16,
+          boxShadow: '0 20px 60px rgba(0,0,0,0.3)',
+          border: '1px solid rgba(255,255,255,0.1)',
+          background: 'rgba(255,255,255,0.98)',
+        }}>
+          <div style={{ textAlign: 'center', marginBottom: 20 }}>
+            <Title level={4} style={{ margin: 0 }}>开始使用</Title>
+            <Text type="secondary">已有账号请登录，新用户请注册</Text>
+          </div>
+
+          <Tabs
+            centered
+            activeKey={activeTab}
+            onChange={setActiveTab}
+            items={[
+              {
+                key: 'user',
+                label: '用户登录',
+                children: <UserLoginForm onSuccess={onLogin} defaultEmail={registeredEmail} />,
+              },
+              {
+                key: 'register',
+                label: '用户注册',
+                children: (
+                  <>
+                    <UserRegisterForm onRegistered={handleRegistered} />
+                    <Alert message="注册后自动填入登录邮箱" type="info" showIcon
+                      style={{ borderRadius: 8, fontSize: 12, marginTop: 8 }} />
+                  </>
+                ),
+              },
+              {
+                key: 'admin',
+                label: '管理员登录',
+                children: (
+                  <>
+                    <AdminLoginForm onSuccess={onLogin} />
+                    <Alert message="验证码将发送至您的管理员邮箱" type="info" showIcon
+                      style={{ borderRadius: 8, fontSize: 12 }} />
+                  </>
+                ),
+              },
+            ]}
+          />
+        </Card>
+      </div>
     </div>
   )
 }
