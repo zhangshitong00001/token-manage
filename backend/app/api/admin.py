@@ -12,6 +12,7 @@ from app.config import settings
 from app.database import get_db
 from app.models import User, TokenUsage
 from app.models.order import RechargeOrder
+from app.models.deepseek_invoice import DeepSeekInvoice
 from app.models.package import TokenPackage
 from app.models.price_config import PriceConfig
 from app.models.system_daily_usage import SystemDailyUsage
@@ -39,15 +40,15 @@ def get_statistics(
     today_usage = db.query(func.coalesce(func.sum(TokenUsage.total_cost), 0)).filter(
         TokenUsage.usage_time >= today_start
     ).scalar()
-
-    today_recharge = db.query(func.coalesce(func.sum(RechargeOrder.amount_cent), 0)).filter(
-        RechargeOrder.pay_status == 1,
-        func.date(RechargeOrder.pay_time) == today,
+    # 今日充值成功（DeepSeek 账单）
+    today_recharge = db.query(func.coalesce(func.sum(DeepSeekInvoice.amount), 0)).filter(
+        DeepSeekInvoice.status == "SUCCESS",
+        func.date(DeepSeekInvoice.paid_at) == today,
     ).scalar()
 
-    # 历史充值成功总金额（分）
-    total_recharge = db.query(func.coalesce(func.sum(RechargeOrder.amount_cent), 0)).filter(
-        RechargeOrder.pay_status == 1,
+    # 历史充值成功总金额（DeepSeek 账单）
+    total_recharge = db.query(func.coalesce(func.sum(DeepSeekInvoice.amount), 0)).filter(
+        DeepSeekInvoice.status == "SUCCESS",
     ).scalar()
 
     total_users = db.query(func.count(User.id)).scalar()
