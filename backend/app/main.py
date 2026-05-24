@@ -5,7 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, JSONResponse
 
-from app.api import auth, user, usage, mobile, packages, orders, admin, log, chat
+from app.api import auth, user, usage, mobile, packages, orders, admin, log, chat, workspace
 from app.database import engine, Base
 from app.middleware import RequestLogMiddleware
 from app.models import User
@@ -51,6 +51,7 @@ app.include_router(orders.router)
 app.include_router(admin.router)
 app.include_router(log.router)
 app.include_router(chat.router)
+app.include_router(workspace.router)
 
 
 def mount_static(app, url_path: str, dir_path: Path, name: str):

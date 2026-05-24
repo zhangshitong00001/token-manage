@@ -6,7 +6,7 @@ import {
   LogoutOutlined, WarningOutlined, DownOutlined,
   SafetyOutlined, BarChartOutlined, CloudUploadOutlined,
   MessageOutlined, CodeOutlined,
-  RobotOutlined,
+  RobotOutlined, AppstoreOutlined,
 } from '@ant-design/icons'
 import { Routes, Route, useNavigate, useLocation } from 'react-router-dom'
 import Login from './pages/Login'
@@ -19,6 +19,7 @@ import UsageLog from './pages/UsageLog'
 import SystemUsage from './pages/SystemUsage'
 import UploadPage from './pages/Upload'
 import Chat from './pages/Chat'
+import DataWorkspace from './pages/DataWorkspace'
 import api from './api'
 import useIdleTimer from './useIdleTimer'
 
@@ -34,6 +35,7 @@ const allMenuItems = [
   { key: '/admin/usage', icon: <FileTextOutlined />, label: '消耗记录' },
   { key: '/admin/system-usage', icon: <BarChartOutlined />, label: '系统消耗' },
   { key: '/admin/upload', icon: <CloudUploadOutlined />, label: '文件上传' },
+  { key: '/admin/workspace', icon: <AppstoreOutlined />, label: '数据工作台' },
   {
     key: 'agent',
     icon: <RobotOutlined />,
@@ -247,6 +249,7 @@ function AppLayout() {
             <Route path="/admin/usage" element={<UsageLog />} />
             <Route path="/admin/system-usage" element={<SystemUsage />} />
             <Route path="/admin/upload" element={<UploadPage />} />
+            <Route path="/admin/workspace" element={<DataWorkspace />} />
             <Route path="/admin/chat" element={<Chat />} />
             <Route path="*" element={<Dashboard />} />
           </Routes>
