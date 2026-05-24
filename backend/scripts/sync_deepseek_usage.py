@@ -28,13 +28,14 @@ if _ENV_FILE.exists():
         _line = _line.strip()
         if _line and not _line.startswith("#") and "=" in _line:
             _k, _v = _line.split("=", 1)
-            # 从 DATABASE_URL 解析密码
+            # 从 DATABASE_URL 解析密码（需 URL 解码）
             if _k == "DATABASE_URL" and _v.startswith("postgresql"):
                 import re
+                from urllib.parse import unquote
                 _m = re.search(r"://([^:]+):([^@]+)@", _v)
                 if _m:
                     _DB_USER = os.environ.get("DB_USER") or _m.group(1)
-                    _DB_PASS = os.environ.get("DB_PASSWORD") or _m.group(2)
+                    _DB_PASS = os.environ.get("DB_PASSWORD") or unquote(_m.group(2))
                     _DB_HOST = os.environ.get("DB_HOST") or "127.0.0.1"
                     _DB_PORT = int(os.environ.get("DB_PORT") or "5432")
                     _DB_NAME = os.environ.get("DB_NAME") or "tokenmanager"

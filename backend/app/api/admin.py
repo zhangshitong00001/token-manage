@@ -45,12 +45,18 @@ def get_statistics(
         func.date(RechargeOrder.pay_time) == today,
     ).scalar()
 
+    # 历史充值成功总金额（分）
+    total_recharge = db.query(func.coalesce(func.sum(RechargeOrder.amount_cent), 0)).filter(
+        RechargeOrder.pay_status == 1,
+    ).scalar()
+
     total_users = db.query(func.count(User.id)).scalar()
     active_users = db.query(func.count(User.id)).filter(User.status == 1).scalar()
 
     return {
         "today_total_usage": int(today_usage),
         "today_total_recharge": int(today_recharge),
+        "total_recharge_amount": int(total_recharge),
         "total_users": total_users,
         "active_users": active_users,
     }
