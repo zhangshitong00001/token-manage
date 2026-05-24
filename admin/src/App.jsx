@@ -5,7 +5,7 @@ import {
   DollarOutlined, FileTextOutlined, SettingOutlined,
   LogoutOutlined, WarningOutlined, DownOutlined,
   SafetyOutlined, BarChartOutlined, CloudUploadOutlined,
-  KeyOutlined, MessageOutlined, CodeOutlined,
+  MessageOutlined, CodeOutlined,
   RobotOutlined, RocketOutlined,
 } from '@ant-design/icons'
 import { Routes, Route, useNavigate, useLocation } from 'react-router-dom'
@@ -18,7 +18,6 @@ import PriceConfig from './pages/PriceConfig'
 import UsageLog from './pages/UsageLog'
 import SystemUsage from './pages/SystemUsage'
 import UploadPage from './pages/Upload'
-import DeepSeek from './pages/DeepSeek'
 import Chat from './pages/Chat'
 import Promotion from './pages/Promotion'
 import api from './api'
@@ -36,7 +35,6 @@ const allMenuItems = [
   { key: '/admin/usage', icon: <FileTextOutlined />, label: '消耗记录' },
   { key: '/admin/system-usage', icon: <BarChartOutlined />, label: '系统消耗' },
   { key: '/admin/upload', icon: <CloudUploadOutlined />, label: '文件上传' },
-  { key: '/admin/deepseek', icon: <KeyOutlined />, label: 'DeepSeek 管理', adminOnly: true },
   { key: '/admin/promotion', icon: <RocketOutlined />, label: '产品介绍' },
   {
     key: 'agent',
@@ -251,7 +249,6 @@ function AppLayout() {
             <Route path="/admin/usage" element={<UsageLog />} />
             <Route path="/admin/system-usage" element={<SystemUsage />} />
             <Route path="/admin/upload" element={<UploadPage />} />
-            <Route path="/admin/deepseek" element={<DeepSeek />} />
             <Route path="/admin/promotion" element={<Promotion />} />
             <Route path="/admin/chat" element={<Chat />} />
             <Route path="*" element={<Dashboard />} />
