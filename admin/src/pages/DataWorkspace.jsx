@@ -102,17 +102,21 @@ export default function DataWorkspace() {
     })))
 
     try {
+      const token = localStorage.getItem('admin_token')
       const res = await fetch(
-        `${api.defaults.baseURL || ''}/api/workspace/process` +
+        `/api/workspace/process` +
         `?files=${encodeURIComponent(fileListJson)}` +
         `&description=${encodeURIComponent(query)}`,
         {
-          headers: api.defaults.headers,
+          headers: {
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
         }
       )
 
       if (!res.ok) {
-        throw new Error(`HTTP ${res.status}`)
+        const errText = await res.text().catch(() => '')
+        throw new Error(`HTTP ${res.status}${errText ? `: ${errText}` : ''}`)
       }
 
       const reader = res.body.getReader()
