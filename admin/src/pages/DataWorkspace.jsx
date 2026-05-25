@@ -108,6 +108,7 @@ export default function DataWorkspace() {
         `?files=${encodeURIComponent(fileListJson)}` +
         `&description=${encodeURIComponent(query)}`,
         {
+          method: 'POST',
           headers: {
             ...(token ? { Authorization: `Bearer ${token}` } : {}),
           },
