@@ -11,7 +11,7 @@ import time
 import zipfile
 
 from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File
-from fastapi.responses import StreamingResponse, JSONResponse
+from fastapi.responses import StreamingResponse, JSONResponse, FileResponse
 from pathlib import Path
 from pydantic import BaseModel
 
@@ -28,6 +28,8 @@ CLAUDE_ENV = {
 }
 CLAUDE_BIN = "/usr/bin/claude"
 WORK_DIR = "/root/TokenManager"  # Claude Code 工作目录
+CHAT_OUTPUT_DIR = Path("/workspace/chat-output")
+CHAT_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
 
 # --- Helper: 从 tool_result content 提取纯文本 ---
@@ -118,6 +120,8 @@ def build_prompt(message: str, history: list[dict] | None, files: list[FileInfo]
             role = "User" if msg["role"] == "user" else "Assistant"
             parts.append(f"{role}: {msg['content']}")
     parts.append(f"User: {message}")
+    parts.append("")
+    parts.append("===== \u8f93\u51fa\u8981\u6c42 =====\n\u5982\u679c\u4f60\u751f\u6210\u4e86\u6570\u636e\u6587\u4ef6\uff08CSV\u3001Excel\u3001JSON\u3001\u62a5\u544a\u7b49\uff09\uff0c\u8bf7\u4fdd\u5b58\u5230 /workspace/chat-output/ \u76ee\u5f55\u4e0b\u3002\n\u8f93\u51fa\u6587\u4ef6\u540d\u683c\u5f0f\uff1aoutput_\u65f6\u95f4\u6233.\u6269\u5c55\u540d\uff08\u5982 output_1700000000.xlsx\uff09\n\u5982\u679c\u7528\u6237\u6ca1\u6709\u6307\u5b9a\u8f93\u51fa\u683c\u5f0f\uff0c\u9ed8\u8ba4\u8f93\u51fa CSV\uff08utf-8-sig \u7f16\u7801\uff0cExcel \u53ef\u6253\u5f00\uff09\n\u5904\u7406\u5b8c\u6210\u540e\uff0c\u5728\u56de\u590d\u4e2d\u8bf4\u660e\u751f\u6210\u7684\u6587\u4ef6\u540d\u548c\u5185\u5bb9\u6982\u8981\u3002")
     return "\n\n".join(parts)
 
 
@@ -322,6 +326,13 @@ async def chat_stream(
                     # 获取本次变更的文件列表
                     changed_files = _get_changed_files()
 
+                    # 扫描输出目录中的新文件
+                    output_files = []
+                    if CHAT_OUTPUT_DIR.exists():
+                        for f in sorted(CHAT_OUTPUT_DIR.iterdir(), key=lambda x: x.stat().st_mtime, reverse=True):
+                            if f.is_file() and f.stat().st_mtime > start_time:
+                                output_files.append(f.name)
+
                     # 保存结果到缓存 + 保存到聊天历史（即使前端已断开）
                     _save_stream_progress(user_id_val, collected_text, event_count,
                         user_message=req.message, start_time=start_time, finished=True)
@@ -345,6 +356,7 @@ async def chat_stream(
                         'type': 'done',
                         'content': collected_text,
                         'changed_files': changed_files,
+                        'output_files': output_files,
                         'cost': data.get('total_cost_usd', 0),
                         'tokens_input': data.get('usage', {}).get('input_tokens', 0),
                         'tokens_output': data.get('usage', {}).get('output_tokens', 0),
@@ -404,8 +416,14 @@ async def chat_stream(
 
         if not error_occurred and collected_text:
             changed_files = _get_changed_files()
+            # 扫描输出目录中的新文件
+            output_files = []
+            if CHAT_OUTPUT_DIR.exists():
+                for f in sorted(CHAT_OUTPUT_DIR.iterdir(), key=lambda x: x.stat().st_mtime, reverse=True):
+                    if f.is_file() and f.stat().st_mtime > start_time:
+                        output_files.append(f.name)
             elapsed = time.time() - start_time
-            yield f"data: {json.dumps({'type': 'done', 'content': collected_text, 'changed_files': changed_files, 'cost': 0, 'tokens_input': 0, 'tokens_output': 0, 'duration_ms': int(elapsed * 1000)})}\n\n"
+            yield f"data: {json.dumps({'type': 'done', 'content': collected_text, 'changed_files': changed_files, 'output_files': output_files, 'cost': 0, 'tokens_input': 0, 'tokens_output': 0, 'duration_ms': int(elapsed * 1000)})}\n\n"
 
     return StreamingResponse(
         event_stream(),
@@ -443,6 +461,20 @@ async def download_files(req: DownloadRequest, user=Depends(get_current_user)):
         headers={
             "Content-Disposition": f"attachment; filename=claude-output-{int(time.time())}.zip",
         },
+    )
+
+
+@router.get("/download-output/{filename}")
+async def download_output_file(filename: str, user=Depends(get_current_user)):
+    """下载 AI 处理生成的输出文件"""
+    safe = os.path.basename(filename)
+    file_path = CHAT_OUTPUT_DIR / safe
+    if not file_path.exists():
+        raise HTTPException(404, "文件不存在或已过期")
+    return FileResponse(
+        str(file_path),
+        filename=safe,
+        media_type="application/octet-stream",
     )
 
 

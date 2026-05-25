@@ -280,6 +280,9 @@ export default function Chat() {
                 if (data.changed_files?.length > 0) {
                   assistantMsg.changed_files = data.changed_files
                 }
+                if (data.output_files?.length > 0) {
+                  assistantMsg.output_files = data.output_files
+                }
                 setMessages((prev) => [...prev, assistantMsg])
                 setStreamingText('')
                 break
@@ -329,6 +332,27 @@ export default function Chat() {
       a.click()
       URL.revokeObjectURL(url)
       message.success(`已下载 ${files.length} 个文件`)
+    } catch (err) {
+      message.error(`下载失败: ${err.message}`)
+    }
+  }
+
+  const downloadOutputFile = async (filename) => {
+    const token = getToken()
+    if (!token) return
+    try {
+      const res = await fetch(`/api/chat/download-output/${encodeURIComponent(filename)}`, {
+        headers: { 'Authorization': `Bearer ${token}` },
+      })
+      if (!res.ok) { message.error('下载失败'); return }
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = filename
+      a.click()
+      URL.revokeObjectURL(url)
+      message.success(`⬇️ ${filename} 下载中`)
     } catch (err) {
       message.error(`下载失败: ${err.message}`)
     }
@@ -524,6 +548,28 @@ export default function Chat() {
                       打包下载所有文件
                     </Button>
                   </div>
+                </div>
+              )}
+              {/* 处理结果文件下载（AI生成的CSV/Excel等） */}
+              {msg.output_files && msg.output_files.length > 0 && (
+                <div style={{
+                  marginTop: 10, borderTop: '1px solid #e8e8e8', paddingTop: 10,
+                  display: 'flex', gap: 8, flexWrap: 'wrap',
+                }}>
+                  {msg.output_files.map((f, fi) => (
+                    <div key={fi} style={{
+                      display: 'flex', alignItems: 'center', gap: 6,
+                      padding: '6px 10px', background: '#f6ffed',
+                      borderRadius: 8, border: '1px solid #b7eb8f', fontSize: 12,
+                    }}>
+                      <FileTextOutlined style={{ color: '#52c41a', fontSize: 16 }} />
+                      <span style={{ fontWeight: 500 }}>{f}</span>
+                      <Button type="primary" size="small" icon={<DownloadOutlined />}
+                        onClick={() => downloadOutputFile(f)}
+                        style={{ borderRadius: 6, height: 24, fontSize: 11 }}
+                      >下载</Button>
+                    </div>
+                  ))}
                 </div>
               )}
             </div>
