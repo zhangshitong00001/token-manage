@@ -270,7 +270,7 @@ export default function ClaudeTerminal() {
         display: 'flex', alignItems: 'center', gap: 8,
         borderBottom: '1px solid #0f3460',
       }}>
-        <TerminalOutlined style={{ color: '#00ff88', fontSize: 18 }} />
+        <CodeOutlined style={{ color: '#00ff88', fontSize: 18 }} />
         <Text style={{ color: '#e0e0e0', fontWeight: 600, fontSize: 14, marginRight: 8 }}>
           Claude Code Terminal
         </Text>
