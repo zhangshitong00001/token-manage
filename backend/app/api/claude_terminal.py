@@ -91,21 +91,31 @@ class ClaudeTerminalSession:
         if self.config.skip_permissions and not is_root:
             cmd.append("--dangerously-skip-permissions")
         
+        # ── 模式处理 ──
+        # Claude Code 的 plan 模式用 --permission-mode plan
+        # 而用户界面上定义的 "normal" 对应默认模式
+        permission_mode = None
         if self.config.mode == "auto":
-            cmd += ["--permission-mode", "auto"]
+            permission_mode = "auto"
         elif self.config.mode == "plan":
-            cmd += ["--permission-mode", "plan"]
+            permission_mode = "plan"
         elif self.config.mode == "acceptEdits":
-            cmd += ["--permission-mode", "acceptEdits"]
-        elif self.config.mode == "normal":
-            pass  # 默认模式，不需要额外参数
+            permission_mode = "acceptEdits"
+        # "normal" → 不加 permission-mode，保持默认
         
-        # root 下自动用 acceptEdits（available 的最高权限模式）
-        if is_root and self.config.skip_permissions:
-            cmd += ["--permission-mode", "acceptEdits"]
+        # root 下 auto 模式自动降级为 acceptEdits（如果 skip_permissions 未开就会弹确认，root 不可用 --dangerously-skip-permissions）
+        if is_root and self.config.skip_permissions and self.config.mode == "auto":
+            permission_mode = "acceptEdits"
+        
+        if permission_mode:
+            cmd += ["--permission-mode", permission_mode]
 
         cmd += ["--model", self.config.model]
         cmd += ["--effort", self.config.effort]
+
+        # 日志
+        print(f"[CLAUDE_AGENT] CMD: {' '.join(cmd)}")
+        print(f"[CLAUDE_AGENT] Config dump: {self.config.model_dump()}")
 
         return cmd
 

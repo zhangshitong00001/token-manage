@@ -245,7 +245,7 @@ export default function ClaudeTerminal() {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`,
         },
-        body: JSON.stringify({ config, initial_prompt: '' }),
+        body: JSON.stringify({ ...config, initial_prompt: '' }),
       })
       const data = await res.json()
       if (data.session_id) {
