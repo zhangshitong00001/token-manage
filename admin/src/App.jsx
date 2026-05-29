@@ -6,7 +6,7 @@ import {
   LogoutOutlined, WarningOutlined, DownOutlined,
   SafetyOutlined, BarChartOutlined, CloudUploadOutlined,
   MessageOutlined, CodeOutlined,
-  RobotOutlined, AppstoreOutlined,
+  RobotOutlined, AppstoreOutlined, BuildOutlined,
 } from '@ant-design/icons'
 import { Routes, Route, useNavigate, useLocation } from 'react-router-dom'
 import Login from './pages/Login'
@@ -19,6 +19,7 @@ import UsageLog from './pages/UsageLog'
 import SystemUsage from './pages/SystemUsage'
 import UploadPage from './pages/Upload'
 import Chat from './pages/Chat'
+import ClaudeTerminal from './pages/ClaudeTerminal'
 import DataWorkspace from './pages/DataWorkspace'
 import api from './api'
 import useIdleTimer from './useIdleTimer'
@@ -41,7 +42,8 @@ const allMenuItems = [
     icon: <RobotOutlined />,
     label: 'Agent',
     children: [
-      { key: '/admin/chat', icon: <CodeOutlined />, label: 'Claude-code' },
+      { key: '/admin/chat', icon: <MessageOutlined />, label: 'AI 对话' },
+      { key: '/admin/claude-terminal', icon: <BuildOutlined />, label: 'Claude Code 终端' },
     ],
   },
 ]
@@ -251,6 +253,7 @@ function AppLayout() {
             <Route path="/admin/upload" element={<UploadPage />} />
             <Route path="/admin/workspace" element={<DataWorkspace />} />
             <Route path="/admin/chat" element={<Chat />} />
+            <Route path="/admin/claude-terminal" element={<ClaudeTerminal />} />
             <Route path="*" element={<Dashboard />} />
           </Routes>
         </Content>
