@@ -1,22 +1,22 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react'
 import {
-  Layout, Menu, Button, Select, InputNumber, Switch, Tag, Space,
-  Typography, Modal, message, Tooltip, Spin, Input, Badge, Drawer,
-  Slider, Divider, Dropdown,
+  Layout, Button, Select, Switch, Tag, Space,
+  Typography, message, Tooltip, Badge, Drawer,
+  Slider, Divider, Input,
 } from 'antd'
 import {
   PlayCircleOutlined, StopOutlined, DeleteOutlined,
   SettingOutlined, CodeOutlined, RobotOutlined,
-  DownOutlined, RightOutlined, ReloadOutlined,
-  PlusOutlined, MinusOutlined, FullscreenOutlined,
-  BgColorsOutlined, ClearOutlined,
+  ReloadOutlined, MinusOutlined, ClearOutlined,
 } from '@ant-design/icons'
+import { Terminal } from 'xterm'
+import { FitAddon } from '@xterm/addon-fit'
+import 'xterm/css/xterm.css'
 import api from '../api'
 
-const { Text, Title } = Typography
+const { Text } = Typography
 const { TextArea } = Input
 
-// ── 参数面板 ──
 const MODE_OPTIONS = [
   { value: 'auto', label: 'Auto', desc: '自动批准所有操作' },
   { value: 'normal', label: 'Normal', desc: '默认模式，需确认' },
@@ -40,7 +40,6 @@ const EFFORT_OPTIONS = [
 ]
 
 export default function ClaudeTerminal() {
-  // ── 状态 ──
   const [config, setConfig] = useState({
     mode: 'auto',
     model: 'deepseek-chat',
@@ -52,16 +51,103 @@ export default function ClaudeTerminal() {
   const [sessions, setSessions] = useState([])
   const [activeSession, setActiveSession] = useState(null)
   const [wsConnected, setWsConnected] = useState(false)
-  const [outputLines, setOutputLines] = useState([])
-  const [inputText, setInputText] = useState('')
-  const [initialPrompt, setInitialPrompt] = useState('')
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [starting, setStarting] = useState(false)
-  const [historyVisible, setHistoryVisible] = useState(false)
-  const [historyRecords, setHistoryRecords] = useState([])
+
+  const terminalRef = useRef(null)
+  const xtermRef = useRef(null)
+  const fitAddonRef = useRef(null)
   const wsRef = useRef(null)
-  const outputRef = useRef(null)
-  const maxLinesRef = useRef(1000)
+  const inputBufferRef = useRef('')
+
+  // ── 初始化 Xterm.js ──
+  useEffect(() => {
+    if (!terminalRef.current || xtermRef.current) return
+
+    const term = new Terminal({
+      cursorBlink: true,
+      cursorStyle: 'block',
+      fontSize: 13,
+      fontFamily: "'Courier New', 'Consolas', monospace",
+      theme: {
+        background: '#0d1b2a',
+        foreground: '#e0e0e0',
+        cursor: '#00ff88',
+        selectionBackground: '#1a3a5c',
+        black: '#1d1f21',
+        red: '#cc6666',
+        green: '#b5bd68',
+        yellow: '#f0c674',
+        blue: '#81a2be',
+        magenta: '#b294bb',
+        cyan: '#8abeb7',
+        white: '#c5c8c6',
+        brightBlack: '#666666',
+        brightRed: '#cc6666',
+        brightGreen: '#b5bd68',
+        brightYellow: '#f0c674',
+        brightBlue: '#81a2be',
+        brightMagenta: '#b294bb',
+        brightCyan: '#8abeb7',
+        brightWhite: '#ffffff',
+      },
+      allowTransparency: true,
+      convertEol: true,
+      cols: 100,
+      rows: 30,
+    })
+
+    const fitAddon = new FitAddon()
+    term.loadAddon(fitAddon)
+    fitAddonRef.current = fitAddon
+
+    term.open(terminalRef.current)
+    fitAddon.fit()
+
+    // 处理用户键盘输入 → 发送到 WebSocket
+    term.onData((data) => {
+      if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+        wsRef.current.send(JSON.stringify({ type: 'input', data }))
+      }
+    })
+
+    // 显示欢迎信息
+    term.writeln('\x1b[36m╔══════════════════════════════════════╗')
+    term.writeln('\x1b[36m║  \x1b[32mClaude Code Terminal\x1b[36m               ║')
+    term.writeln('\x1b[36m║  \x1b[33m点击「新会话」启动\x1b[36m                 ║')
+    term.writeln('\x1b[36m╚══════════════════════════════════════╝\x1b[0m')
+    term.writeln('')
+
+    xtermRef.current = term
+
+    return () => {
+      term.dispose()
+      xtermRef.current = null
+    }
+  }, [])
+
+  // ── 适应窗口大小 ──
+  useEffect(() => {
+    const handleResize = () => {
+      if (fitAddonRef.current) {
+        fitAddonRef.current.fit()
+        // 通知后端 PTY 大小变化
+        if (xtermRef.current && wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+          const dims = fitAddonRef.current.proposeDimensions()
+          if (dims) {
+            wsRef.current.send(JSON.stringify({
+              type: 'resize',
+              cols: dims.cols,
+              rows: dims.rows,
+            }))
+          }
+        }
+      }
+    }
+    window.addEventListener('resize', handleResize)
+    setTimeout(handleResize, 100)
+    return () => window.removeEventListener('resize', handleResize)
+  }, [])
 
   // ── 获取会话列表 ──
   const fetchSessions = useCallback(async () => {
@@ -90,30 +176,37 @@ export default function ClaudeTerminal() {
 
     ws.onopen = () => {
       setWsConnected(true)
-      setOutputLines(prev => [...prev, { type: 'system', text: '🟢 WebSocket 已连接' }])
+      const term = xtermRef.current
+      if (term) {
+        term.writeln('\x1b[32m🟢 WebSocket 已连接\x1b[0m')
+        // 通知终端大小
+        if (fitAddonRef.current) {
+          const dims = fitAddonRef.current.proposeDimensions()
+          if (dims) {
+            ws.send(JSON.stringify({ type: 'resize', cols: dims.cols, rows: dims.rows }))
+          }
+        }
+      }
     }
 
     ws.onmessage = (event) => {
       try {
         const msg = JSON.parse(event.data)
+        const term = xtermRef.current
+        if (!term) return
+
         switch (msg.type) {
           case 'output':
-            setOutputLines(prev => {
-              const next = [...prev, { type: 'output', text: msg.data }]
-              if (next.length > maxLinesRef.current) {
-                return next.slice(-maxLinesRef.current)
-              }
-              return next
-            })
+            term.write(msg.data)
             break
           case 'status':
             if (msg.state === 'stopped') {
-              setOutputLines(prev => [...prev, { type: 'system', text: '⏹ 会话已结束' }])
+              term.writeln('\r\n\x1b[33m⏹ 会话已结束\x1b[0m')
               fetchSessions()
             }
             break
           case 'error':
-            setOutputLines(prev => [...prev, { type: 'error', text: `❌ ${msg.message}` }])
+            term.writeln(`\r\n\x1b[31m❌ ${msg.message}\x1b[0m`)
             break
         }
       } catch {}
@@ -121,26 +214,22 @@ export default function ClaudeTerminal() {
 
     ws.onclose = () => {
       setWsConnected(false)
-      setOutputLines(prev => [...prev, { type: 'system', text: '🔴 WebSocket 已断开' }])
+      const term = xtermRef.current
+      if (term) {
+        term.writeln('\r\n\x1b[31m🔴 WebSocket 已断开\x1b[0m')
+      }
       fetchSessions()
     }
 
     ws.onerror = () => {
-      setOutputLines(prev => [...prev, { type: 'error', text: '❌ WebSocket 连接错误' }])
+      const term = xtermRef.current
+      if (term) {
+        term.writeln('\r\n\x1b[31m❌ WebSocket 连接错误\x1b[0m')
+      }
     }
 
     wsRef.current = ws
   }, [fetchSessions])
-
-  // ── 断开 WS ──
-  const disconnectWS = useCallback(() => {
-    if (wsRef.current) {
-      wsRef.current.close()
-      wsRef.current = null
-    }
-    setWsConnected(false)
-    setActiveSession(null)
-  }, [])
 
   // ── 启动新会话 ──
   const startSession = async () => {
@@ -148,34 +237,29 @@ export default function ClaudeTerminal() {
     setStarting(true)
     try {
       const token = localStorage.getItem('admin_token')
-      if (!token) {
-        message.error('请先登录')
-        return
-      }
+      if (!token) { message.error('请先登录'); return }
+
       const res = await fetch('/api/claude-terminal/session/start', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`,
         },
-        body: JSON.stringify({
-          config,
-          initial_prompt: initialPrompt,
-        }),
+        body: JSON.stringify({ config, initial_prompt: '' }),
       })
       const data = await res.json()
       if (data.session_id) {
-        message.success('✅ 会话已启动')
-        setOutputLines([
-          { type: 'system', text: `🚀 会话 ${data.session_id} 已启动` },
-          { type: 'system', text: `模式: ${config.mode} | 模型: ${config.model} | Effort: ${config.effort}` },
-          { type: 'system', text: initialPrompt ? `Prompt: ${initialPrompt}` : '(交互模式)' },
-          { type: 'system', text: '─'.repeat(60) },
-        ])
+        const term = xtermRef.current
+        if (term) {
+          term.clear()
+          term.writeln(`\x1b[36m🚀 会话 ${data.session_id.slice(-8)} 已启动\x1b[0m`)
+          term.writeln(`\x1b[90m模式: ${config.mode} | 模型: ${config.model} | Effort: ${config.effort}\x1b[0m`)
+          term.writeln('\x1b[90m交互模式 - 在终端中直接输入\x1b[0m')
+          term.writeln('')
+        }
         setActiveSession(data.session_id)
         connectWS(data.session_id)
         fetchSessions()
-        setInitialPrompt('')
       } else {
         message.error(data.error || '启动失败')
       }
@@ -195,191 +279,102 @@ export default function ClaudeTerminal() {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${token}` },
       })
-      message.info('⏹ 已发送停止指令')
-    } catch (err) {
-      message.error(`停止失败: ${err.message}`)
-    }
+    } catch {}
   }
 
   // ── 发送信号 ──
   const sendSignal = (sig) => {
-    if (!activeSession || !wsRef.current) return
+    if (!activeSession || !wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return
     wsRef.current.send(JSON.stringify({ type: 'signal', signal: sig }))
-    setOutputLines(prev => [...prev, { type: 'system', text: `⌨️ 发送信号: ${sig}` }])
   }
 
-  // ── 发送输入 ──
-  const sendInput = () => {
-    if (!inputText.trim() || !activeSession || !wsRef.current) return
-    const text = inputText + '\n'
-    wsRef.current.send(JSON.stringify({ type: 'input', data: text }))
-    setOutputLines(prev => [...prev, { type: 'input', text: `$ ${inputText}` }])
-    setInputText('')
-  }
-
-  // ── 清除输出 ──
-  const clearOutput = () => {
-    setOutputLines([])
-  }
-
-  // ── 自动滚动到底部 ──
+  // ── 清理 ──
   useEffect(() => {
-    if (outputRef.current) {
-      outputRef.current.scrollTop = outputRef.current.scrollHeight
+    return () => {
+      if (wsRef.current) wsRef.current.close()
     }
-  }, [outputLines])
+  }, [])
 
-  // ── 加载深度历史 ──
-  const loadHistoryFromBackend = async () => {
-    try {
-      const token = localStorage.getItem('admin_token')
-      if (!token) return
-      const res = await fetch('/api/chat/history', {
-        headers: { 'Authorization': `Bearer ${token}` },
-      })
-      const data = await res.json()
-      if (data.messages?.length > 0) {
-        setHistoryRecords(data.messages)
-        setHistoryVisible(true)
-      } else {
-        message.info('暂无历史记录')
-      }
-    } catch {
-      message.error('加载历史失败')
-    }
-  }
-
-  // ── 键盘快捷键 ──
-  const handleKeyDown = (e) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault()
-      sendInput()
-    }
-  }
-
-  // ── 格式化输出（ANSI 简易处理） ──
-  const formatOutput = (text) => {
-    // 移除 ANSI 转义序列
-    return text
-      .replace(/\x1b\[[0-9;]*[a-zA-Z]/g, '')
-      .replace(/\x1b\][0-9;]*[^\x1b]*(\x1b\\)?/g, '')
-  }
-
-  // ── 渲染 ──
   return (
-    <Layout style={{ height: 'calc(100vh - 100px)', background: '#1a1a2e', borderRadius: 8, overflow: 'hidden' }}>
-      {/* ── 顶部工具栏 ── */}
+    <Layout style={{ height: 'calc(100vh - 100px)', background: '#0d1b2a', borderRadius: 8, overflow: 'hidden' }}>
+      {/* ── 工具栏 ── */}
       <div style={{
-        background: '#16213e', padding: '8px 16px',
-        display: 'flex', alignItems: 'center', gap: 8,
-        borderBottom: '1px solid #0f3460',
+        background: '#0a1628', padding: '6px 12px',
+        display: 'flex', alignItems: 'center', gap: 6,
+        borderBottom: '1px solid #1a3a5c',
       }}>
-        <CodeOutlined style={{ color: '#00ff88', fontSize: 18 }} />
-        <Text style={{ color: '#e0e0e0', fontWeight: 600, fontSize: 14, marginRight: 8 }}>
+        <CodeOutlined style={{ color: '#00ff88', fontSize: 16 }} />
+        <Text style={{ color: '#e0e0e0', fontWeight: 600, fontSize: 13, marginRight: 8 }}>
           Claude Code Terminal
         </Text>
 
         <Badge status={wsConnected ? 'success' : 'default'} />
-        <Text style={{ color: wsConnected ? '#00ff88' : '#888', fontSize: 12, marginRight: 12 }}>
+        <Text style={{ color: wsConnected ? '#00ff88' : '#666', fontSize: 11, marginRight: 8 }}>
           {wsConnected ? '已连接' : '未连接'}
         </Text>
 
-        <Button
-          size="small"
-          type="primary"
-          icon={<PlayCircleOutlined />}
-          onClick={startSession}
-          loading={starting}
-          style={{ background: '#00a86b', borderColor: '#00a86b' }}
-        >
+        <Button size="small" type="primary" icon={<PlayCircleOutlined />}
+          onClick={startSession} loading={starting}
+          style={{ background: '#00a86b', borderColor: '#00a86b', height: 26, fontSize: 12 }}>
           新会话
         </Button>
 
-        <Button
-          size="small"
-          icon={<StopOutlined />}
-          onClick={stopSession}
-          disabled={!activeSession}
-          danger
-        >
+        <Button size="small" icon={<StopOutlined />}
+          onClick={stopSession} disabled={!activeSession}
+          danger style={{ height: 26, fontSize: 12 }}>
           停止
         </Button>
 
-        <Button
-          size="small"
-          icon={<ClearOutlined />}
-          onClick={clearOutput}
-        >
+        <Button size="small" icon={<DeleteOutlined />}
+          onClick={() => xtermRef.current?.clear()}
+          style={{ height: 26, fontSize: 12 }}>
           清屏
-        </Button>
-
-        <Button
-          size="small"
-          icon={<ReloadOutlined />}
-          onClick={fetchSessions}
-        >
-          刷新
         </Button>
 
         <div style={{ flex: 1 }} />
 
-        <Button
-          size="small"
-          icon={<SettingOutlined />}
+        <Button size="small" icon={<SettingOutlined />}
           onClick={() => setSettingsOpen(true)}
           type={settingsOpen ? 'primary' : 'default'}
-        >
+          style={{ height: 26, fontSize: 12 }}>
           参数
-        </Button>
-
-        <Button
-          size="small"
-          icon={<BgColorsOutlined />}
-          onClick={loadHistoryFromBackend}
-        >
-          历史
         </Button>
       </div>
 
-      <Layout style={{ flex: 1, background: '#1a1a2e' }}>
-        {/* ── 侧栏：会话列表 ── */}
+      <div style={{ display: 'flex', flex: 1 }}>
+        {/* ── 会话列表侧栏 ── */}
         <div style={{
-          width: 240, background: '#16213e',
-          borderRight: '1px solid #0f3460',
+          width: 200, background: '#0a1628',
+          borderRight: '1px solid #1a3a5c',
           display: 'flex', flexDirection: 'column',
         }}>
-          <div style={{ padding: '8px 12px', color: '#888', fontSize: 12, borderBottom: '1px solid #0f3460' }}>
-            会话列表 ({sessions.length})
+          <div style={{ padding: '6px 10px', color: '#666', fontSize: 11, borderBottom: '1px solid #1a3a5c' }}>
+            会话 ({sessions.length})
           </div>
           <div style={{ flex: 1, overflow: 'auto', padding: 4 }}>
             {sessions.length === 0 ? (
-              <div style={{ padding: 16, textAlign: 'center', color: '#555', fontSize: 12 }}>
-                暂无会话<br />点击「新会话」开始
+              <div style={{ padding: 12, textAlign: 'center', color: '#333', fontSize: 11 }}>
+                暂无会话
               </div>
             ) : (
               sessions.map(s => (
-                <div
-                  key={s.session_id}
+                <div key={s.session_id}
                   onClick={() => {
                     setActiveSession(s.session_id)
-                    setOutputLines([])
+                    xtermRef.current?.clear()
                     connectWS(s.session_id)
                   }}
                   style={{
-                    padding: '8px 12px',
-                    cursor: 'pointer',
-                    borderRadius: 4,
-                    marginBottom: 2,
+                    padding: '6px 10px', cursor: 'pointer', borderRadius: 3, marginBottom: 1,
                     background: activeSession === s.session_id ? '#0f3460' : 'transparent',
-                    borderLeft: activeSession === s.session_id ? '3px solid #00ff88' : '3px solid transparent',
-                  }}
-                >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    borderLeft: activeSession === s.session_id ? '2px solid #00ff88' : '2px solid transparent',
+                  }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
                     <Badge status={s.status === 'running' ? 'processing' : 'default'} />
-                    <Text style={{ color: '#ccc', fontSize: 12, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    <Text style={{ color: '#aaa', fontSize: 11, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {s.session_id.slice(-8)}
                     </Text>
-                    <Tag color={s.status === 'running' ? 'green' : 'default'} style={{ fontSize: 10, lineHeight: '16px', padding: '0 4px' }}>
+                    <Tag color={s.status === 'running' ? 'green' : 'default'} style={{ fontSize: 9, lineHeight: '14px', padding: '0 3px' }}>
                       {s.mode}
                     </Tag>
                   </div>
@@ -389,229 +384,85 @@ export default function ClaudeTerminal() {
           </div>
         </div>
 
-        {/* ── 主区域：终端输出 + 输入 ── */}
-        <Layout style={{ flex: 1, background: '#1a1a2e' }}>
-          {/* 输出区 */}
-          <div
-            ref={outputRef}
-            style={{
-              flex: 1, overflow: 'auto', padding: 12,
-              fontFamily: "'Courier New', Consolas, monospace",
-              fontSize: 13, lineHeight: 1.5, whiteSpace: 'pre-wrap',
-              wordBreak: 'break-all',
-            }}
-          >
-            {outputLines.length === 0 && !activeSession && (
-              <div style={{ textAlign: 'center', paddingTop: 80, color: '#555' }}>
-                <RobotOutlined style={{ fontSize: 40, display: 'block', marginBottom: 16, color: '#333' }} />
-                <Text style={{ color: '#555', fontSize: 14 }}>
-                  点击「新会话」启动 Claude Code 终端
-                </Text>
-                <div style={{ marginTop: 8, color: '#444', fontSize: 12 }}>
-                  支持 Auto / Normal / Plan / AcceptEdits 四种模式
-                </div>
-              </div>
-            )}
-            {outputLines.length === 0 && activeSession && (
-              <div style={{ textAlign: 'center', paddingTop: 80, color: '#555', fontSize: 13 }}>
-                <Spin size="small" /> 等待会话输出...
-              </div>
-            )}
-            {outputLines.map((line, i) => {
-              let color = '#e0e0e0'
-              if (line.type === 'system') color = '#00ff88'
-              if (line.type === 'error') color = '#ff6b6b'
-              if (line.type === 'input') color = '#ffd93d'
-              return (
-                <div key={i} style={{ color, minHeight: 18 }}>
-                  {formatOutput(line.text)}
-                </div>
-              )
-            })}
-          </div>
+        {/* ── Xterm.js 终端 ── */}
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+          <div ref={terminalRef} style={{ flex: 1, padding: 4 }} />
+        </div>
+      </div>
 
-          {/* 输入区 */}
-          <div style={{
-            background: '#16213e', padding: '8px 12px',
-            borderTop: '1px solid #0f3460',
-            display: 'flex', gap: 8, alignItems: 'flex-end',
-          }}>
-            <div style={{ color: '#00ff88', fontFamily: 'monospace', paddingBottom: 8, fontSize: 14 }}>$</div>
-            <TextArea
-              value={inputText}
-              onChange={e => setInputText(e.target.value)}
-              onKeyDown={handleKeyDown}
-              placeholder={activeSession ? '输入命令...' : '请先启动一个新会话'}
-              disabled={!activeSession}
-              rows={1}
-              style={{
-                flex: 1, background: '#0d1b2a', color: '#e0e0e0',
-                border: '1px solid #0f3460', borderRadius: 4, resize: 'none',
-                fontFamily: "'Courier New', Consolas, monospace",
-                fontSize: 13,
-              }}
-            />
-            <Space>
-              <Tooltip title="发送 (Enter)">
-                <Button
-                  type="primary"
-                  icon={<PlayCircleOutlined />}
-                  onClick={sendInput}
-                  disabled={!activeSession || !inputText.trim()}
-                  style={{ background: '#00a86b', borderColor: '#00a86b' }}
-                />
-              </Tooltip>
-              <Tooltip title="Ctrl+C (中断)">
-                <Button
-                  icon={<MinusOutlined />}
-                  onClick={() => sendSignal('ctrl_c')}
-                  disabled={!activeSession}
-                  size="small"
-                />
-              </Tooltip>
-              <Tooltip title="Ctrl+D (结束输入)">
-                <Button
-                  icon={<DeleteOutlined />}
-                  onClick={() => sendSignal('ctrl_d')}
-                  disabled={!activeSession}
-                  size="small"
-                />
-              </Tooltip>
-            </Space>
-          </div>
-        </Layout>
-      </Layout>
+      {/* ── Ctrl 快捷按钮 ── */}
+      <div style={{
+        background: '#0a1628', padding: '4px 12px',
+        borderTop: '1px solid #1a3a5c',
+        display: 'flex', gap: 6, alignItems: 'center',
+      }}>
+        <Text style={{ color: '#666', fontSize: 11 }}>Ctrl: </Text>
+        <Tooltip title="Ctrl+C (中断)">
+          <Button size="small" icon={<MinusOutlined />}
+            onClick={() => sendSignal('ctrl_c')} disabled={!activeSession}
+            style={{ height: 24, fontSize: 11 }} />
+        </Tooltip>
+        <Tooltip title="Ctrl+D (结束输入)">
+          <Button size="small" icon={<DeleteOutlined />}
+            onClick={() => sendSignal('ctrl_d')} disabled={!activeSession}
+            style={{ height: 24, fontSize: 11 }} />
+        </Tooltip>
+        <Tooltip title="Kill (强制停止)">
+          <Button size="small" icon={<StopOutlined />}
+            onClick={() => sendSignal('kill')} disabled={!activeSession}
+            style={{ height: 24, fontSize: 11 }} danger />
+        </Tooltip>
+        <Text style={{ color: '#444', fontSize: 10, marginLeft: 8 }}>
+          直接在终端中打字输入，支持完整键盘交互（Tab补全、方向键等）
+        </Text>
+      </div>
 
       {/* ── 参数抽屉 ── */}
       <Drawer
         title={<Space><SettingOutlined /> 终端参数</Space>}
         open={settingsOpen}
         onClose={() => setSettingsOpen(false)}
-        width={360}
-        styles={{ body: { background: '#1a1a2e', color: '#e0e0e0' } }}
+        width={340}
+        styles={{ body: { background: '#0d1b2a', color: '#e0e0e0' } }}
       >
-        <div style={{ marginBottom: 20 }}>
+        <div style={{ marginBottom: 16 }}>
           <Text style={{ color: '#888', fontSize: 12, display: 'block', marginBottom: 4 }}>模式</Text>
-          <Select
-            value={config.mode}
-            onChange={v => setConfig(prev => ({ ...prev, mode: v }))}
-            options={MODE_OPTIONS}
-            style={{ width: '100%' }}
-          />
-          <Text style={{ color: '#666', fontSize: 11, marginTop: 4, display: 'block' }}>
+          <Select value={config.mode} onChange={v => setConfig(p => ({ ...p, mode: v }))}
+            options={MODE_OPTIONS} style={{ width: '100%' }} />
+          <Text style={{ color: '#555', fontSize: 10, marginTop: 2, display: 'block' }}>
             {MODE_OPTIONS.find(o => o.value === config.mode)?.desc}
           </Text>
         </div>
-
-        <div style={{ marginBottom: 20 }}>
+        <div style={{ marginBottom: 16 }}>
           <Text style={{ color: '#888', fontSize: 12, display: 'block', marginBottom: 4 }}>模型</Text>
-          <Select
-            value={config.model}
-            onChange={v => setConfig(prev => ({ ...prev, model: v }))}
-            options={MODEL_OPTIONS}
-            style={{ width: '100%' }}
-          />
+          <Select value={config.model} onChange={v => setConfig(p => ({ ...p, model: v }))}
+            options={MODEL_OPTIONS} style={{ width: '100%' }} />
         </div>
-
-        <div style={{ marginBottom: 20 }}>
-          <Text style={{ color: '#888', fontSize: 12, display: 'block', marginBottom: 4 }}>
-            推理深度 (Effort): {config.effort}
-          </Text>
-          <Select
-            value={config.effort}
-            onChange={v => setConfig(prev => ({ ...prev, effort: v }))}
-            options={EFFORT_OPTIONS}
-            style={{ width: '100%' }}
-          />
+        <div style={{ marginBottom: 16 }}>
+          <Text style={{ color: '#888', fontSize: 12, display: 'block', marginBottom: 4 }}>推理深度: {config.effort}</Text>
+          <Select value={config.effort} onChange={v => setConfig(p => ({ ...p, effort: v }))}
+            options={EFFORT_OPTIONS} style={{ width: '100%' }} />
         </div>
-
-        <div style={{ marginBottom: 20 }}>
-          <Text style={{ color: '#888', fontSize: 12, display: 'block', marginBottom: 4 }}>
-            Max Turns: {config.max_turns}
-          </Text>
-          <Slider
-            min={5}
-            max={100}
-            value={config.max_turns}
-            onChange={v => setConfig(prev => ({ ...prev, max_turns: v }))}
-            trackStyle={{ background: '#00ff88' }}
-            railStyle={{ background: '#0f3460' }}
-          />
+        <div style={{ marginBottom: 16 }}>
+          <Text style={{ color: '#888', fontSize: 12, display: 'block', marginBottom: 4 }}>Max Turns: {config.max_turns}</Text>
+          <Slider min={5} max={100} value={config.max_turns}
+            onChange={v => setConfig(p => ({ ...p, max_turns: v }))}
+            trackStyle={{ background: '#00ff88' }} railStyle={{ background: '#0f3460' }} />
         </div>
-
-        <div style={{ marginBottom: 20 }}>
+        <div style={{ marginBottom: 16 }}>
           <Space>
-            <Switch
-              checked={config.skip_permissions}
-              onChange={v => setConfig(prev => ({ ...prev, skip_permissions: v }))}
-            />
-            <Text style={{ color: '#888', fontSize: 12 }}>
-              跳过权限确认 (--dangerously-skip-permissions)
-            </Text>
+            <Switch checked={config.skip_permissions} onChange={v => setConfig(p => ({ ...p, skip_permissions: v }))} />
+            <Text style={{ color: '#888', fontSize: 12 }}>跳过权限确认</Text>
           </Space>
         </div>
-
         <Divider style={{ borderColor: '#0f3460' }} />
-
-        <div style={{ marginBottom: 20 }}>
-          <Text style={{ color: '#888', fontSize: 12, display: 'block', marginBottom: 4 }}>
-            初始 Prompt (可选)
-          </Text>
-          <TextArea
-            value={initialPrompt}
-            onChange={e => setInitialPrompt(e.target.value)}
-            placeholder="输入初始任务描述，留空进入交互模式..."
-            rows={4}
-            style={{
-              background: '#0d1b2a', color: '#e0e0e0',
-              border: '1px solid #0f3460',
-              fontFamily: 'monospace', fontSize: 13,
-            }}
-          />
-        </div>
-
-        <Button
-          type="primary"
-          block
-          icon={<PlayCircleOutlined />}
+        <Button type="primary" block icon={<PlayCircleOutlined />}
           onClick={() => { setSettingsOpen(false); startSession() }}
           loading={starting}
-          style={{ background: '#00a86b', borderColor: '#00a86b', marginTop: 8 }}
-        >
+          style={{ background: '#00a86b', borderColor: '#00a86b' }}>
           启动会话
         </Button>
       </Drawer>
-
-      {/* ── 历史记录弹窗 ── */}
-      <Modal
-        title={<Space><BgColorsOutlined /> 历史记录</Space>}
-        open={historyVisible}
-        onCancel={() => setHistoryVisible(false)}
-        footer={null}
-        width={800}
-        styles={{ body: { maxHeight: 500, overflow: 'auto' } }}
-      >
-        {historyRecords.length === 0 ? (
-          <Text style={{ color: '#999' }}>暂无历史记录</Text>
-        ) : (
-          historyRecords.map((msg, i) => (
-            <div key={i} style={{
-              marginBottom: 12, padding: 8, borderRadius: 4,
-              background: msg.role === 'user' ? '#e6f7ff' : '#f6ffed',
-            }}>
-              <Tag color={msg.role === 'user' ? 'blue' : 'green'}>
-                {msg.role === 'user' ? '用户' : 'Claude'}
-              </Tag>
-              <div style={{
-                marginTop: 4, whiteSpace: 'pre-wrap', fontSize: 13, color: '#333',
-                maxHeight: 200, overflow: 'auto',
-              }}>
-                {msg.content}
-              </div>
-            </div>
-          ))
-        )}
-      </Modal>
     </Layout>
   )
 }
