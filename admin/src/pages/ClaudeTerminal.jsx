@@ -68,7 +68,7 @@ export default function ClaudeTerminal() {
     try {
       const token = localStorage.getItem('admin_token')
       if (!token) return
-      const res = await api.get('/api/claude-terminal/sessions')
+      const res = await api.get('/claude-terminal/sessions')
       setSessions(res.sessions || [])
     } catch {}
   }, [])
