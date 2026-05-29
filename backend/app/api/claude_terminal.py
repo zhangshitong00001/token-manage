@@ -84,21 +84,29 @@ class ClaudeTerminalSession:
 
     def build_command(self) -> list[str]:
         cmd = [CLAUDE_BIN]
-        if self.config.skip_permissions:
+        
+        # root 用户不能使用 --dangerously-skip-permissions
+        is_root = os.geteuid() == 0
+        
+        if self.config.skip_permissions and not is_root:
             cmd.append("--dangerously-skip-permissions")
+        
         if self.config.mode == "auto":
             cmd += ["--permission-mode", "auto"]
         elif self.config.mode == "plan":
             cmd += ["--permission-mode", "plan"]
         elif self.config.mode == "acceptEdits":
             cmd += ["--permission-mode", "acceptEdits"]
+        elif self.config.mode == "normal":
+            pass  # 默认模式，不需要额外参数
+        
+        # root 下自动用 acceptEdits（available 的最高权限模式）
+        if is_root and self.config.skip_permissions:
+            cmd += ["--permission-mode", "acceptEdits"]
 
         cmd += ["--model", self.config.model]
         cmd += ["--effort", self.config.effort]
 
-        # print mode 启动后走 -p 非交互模式
-        if self.config.mode != "normal":
-            cmd += ["--print"]
         return cmd
 
     async def start(self, initial_prompt: str = ""):

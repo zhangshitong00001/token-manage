@@ -24,9 +24,13 @@ const MODE_OPTIONS = [
   { value: 'acceptEdits', label: 'AcceptEdits', desc: '接受文件编辑' },
 ]
 const MODEL_OPTIONS = [
-  { value: 'sonnet', label: 'Sonnet' },
-  { value: 'opus', label: 'Opus' },
-  { value: 'haiku', label: 'Haiku' },
+  { value: 'sonnet', label: 'Sonnet (Claude)' },
+  { value: 'opus', label: 'Opus (Claude)' },
+  { value: 'haiku', label: 'Haiku (Claude)' },
+  { value: 'deepseek-chat', label: 'DeepSeek Chat' },
+  { value: 'deepseek-reasoner', label: 'DeepSeek Reasoner' },
+  { value: 'deepseek-v4-flash', label: 'DeepSeek V4 Flash' },
+  { value: 'deepseek-v4-pro', label: 'DeepSeek V4 Pro' },
 ]
 const EFFORT_OPTIONS = [
   { value: 'low', label: 'Low (快)' },
@@ -39,7 +43,7 @@ export default function ClaudeTerminal() {
   // ── 状态 ──
   const [config, setConfig] = useState({
     mode: 'auto',
-    model: 'sonnet',
+    model: 'deepseek-chat',
     effort: 'medium',
     max_turns: 30,
     skip_permissions: true,
