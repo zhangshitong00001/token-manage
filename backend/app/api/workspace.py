@@ -19,8 +19,11 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/workspace", tags=["数据工作台"])
 
 WORK_DIR = "/root/TokenManager"
-OUTPUT_DIR = Path("/workspace/output")
-OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+
+# 复用 chat.py 的用户隔离输出目录
+from app.api.chat import BASE_OUTPUT_DIR, _user_workspace_output_dir, _scan_user_output_files, _format_size
+
+OUTPUT_DIR = _user_workspace_output_dir(0)  # fallback placeholder, actual user_id injected at runtime
 
 CLAUDE_ENV = {
     **os.environ,
@@ -33,9 +36,10 @@ CLAUDE_BIN = "/usr/bin/claude"
 SUPPORTED_OUTPUTS = ["csv", "xlsx", "json", "txt", "md"]
 
 
-def build_workspace_prompt(files: list[dict], description: str) -> str:
+def build_workspace_prompt(files: list[dict], description: str, user_id: int = 0) -> str:
     """构造数据处理 prompt，引导 Claude Code 执行数据处理任务"""
     file_list = "\n".join(f"  - {f['name']} ({f.get('type', 'unknown')})" for f in files)
+    user_dir = _user_workspace_output_dir(user_id)
 
     return f"""你是一个专业的数据处理助手。用户上传了以下文件，请按照用户的需求进行处理。
 
@@ -48,7 +52,7 @@ def build_workspace_prompt(files: list[dict], description: str) -> str:
 ===== 执行要求 =====
 1. 先用 Python 读取所有上传文件 (/root/uploads/ 目录下)，理解数据结构和内容
 2. 严格按照用户需求处理数据（清洗、转换、合并、计算、分析等）
-3. 处理结果保存到 {OUTPUT_DIR} 目录下
+3. 处理结果保存到 {user_dir} 目录下
 4. 输出文件名格式：output_时间戳.扩展名（如 output_1700000000.xlsx）
 5. 如果用户没有指定输出格式，默认输出 CSV (用 utf-8-sig 编码，Excel 可打开)
 6. 处理完成后，输出一份清晰的摘要，包括：
@@ -117,7 +121,8 @@ async def workspace_process(
 
     async def event_stream():
         start_time = time.time()
-        prompt = build_workspace_prompt(file_list, description)
+        prompt = build_workspace_prompt(file_list, description, user_id=user.id)
+        user_output_dir = _user_workspace_output_dir(user.id)
 
         # ── 余额检查 ──
         from app.database import SessionLocal
@@ -215,8 +220,8 @@ async def workspace_process(
 
         # 处理完成后查找输出文件
         output_files = []
-        if OUTPUT_DIR.exists():
-            for f in sorted(OUTPUT_DIR.iterdir(), key=lambda x: x.stat().st_mtime, reverse=True):
+        if user_output_dir.exists():
+            for f in sorted(user_output_dir.iterdir(), key=lambda x: x.stat().st_mtime, reverse=True):
                 if f.is_file() and f.stat().st_mtime > start_time:
                     output_files.append(f.name)
 
@@ -256,24 +261,18 @@ async def workspace_process(
 
 @router.get("/output")
 async def list_outputs(user=Depends(get_current_user)):
-    """列出输出目录中的文件"""
-    files = []
-    if OUTPUT_DIR.exists():
-        for f in OUTPUT_DIR.iterdir():
-            if f.is_file():
-                files.append({
-                    "name": f.name,
-                    "size": f.stat().st_size,
-                    "mtime": f.stat().st_mtime,
-                })
-    return {"files": sorted(files, key=lambda x: x["mtime"], reverse=True)}
+    """列出当前用户输出目录中的文件"""
+    user_dir = _user_workspace_output_dir(user.id)
+    files = _scan_user_output_files(user_dir)
+    return {"files": files}
 
 
 @router.get("/download/{filename}")
 async def download_output(filename: str, user=Depends(get_current_user)):
-    """下载处理结果文件"""
+    """下载处理结果文件（用户隔离）"""
     safe = os.path.basename(filename)
-    file_path = OUTPUT_DIR / safe
+    user_dir = _user_workspace_output_dir(user.id)
+    file_path = user_dir / safe
     if not file_path.exists():
         raise HTTPException(404, "文件不存在或已过期")
     return FileResponse(

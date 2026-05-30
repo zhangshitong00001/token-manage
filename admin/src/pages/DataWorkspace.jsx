@@ -28,10 +28,22 @@ export default function DataWorkspace() {
   const [files, setFiles] = useState([])
   const [query, setQuery] = useState('')
   const [processing, setProcessing] = useState(false)
+  const [outputFiles, setOutputFiles] = useState([])
+  const [outputLoading, setOutputLoading] = useState(false)
+
+  const loadOutputFiles = async () => {
+    setOutputLoading(true)
+    try {
+      const res = await api.get('/workspace/output')
+      setOutputFiles(res.files || [])
+    } catch { /* ignore */ }
+    finally { setOutputLoading(false) }
+  }
+
+  useEffect(() => { loadOutputFiles() }, [])
   const [streamText, setStreamText] = useState('')
   const [currentTool, setCurrentTool] = useState('')
-  const [outputFiles, setOutputFiles] = useState([])
-  const [status, setStatus] = useState('idle') // idle | processing | done | error
+  const [resultText, setResultText] = useState('')
   const [logs, setLogs] = useState([])
   const streamRef = useRef(null)
   const logEndRef = useRef(null)

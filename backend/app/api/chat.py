@@ -32,8 +32,39 @@ CLAUDE_ENV = {
 }
 CLAUDE_BIN = "/usr/bin/claude"
 WORK_DIR = "/root/TokenManager"  # Claude Code 工作目录
-CHAT_OUTPUT_DIR = Path("/workspace/chat-output")
-CHAT_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+
+# 用户隔离输出目录
+BASE_OUTPUT_DIR = Path("/workspace/user-outputs")
+BASE_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+
+def _user_chat_output_dir(user_id: int) -> Path:
+    """每个用户独立的聊天输出目录"""
+    d = BASE_OUTPUT_DIR / f"chat_{user_id}"
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+def _user_workspace_output_dir(user_id: int) -> Path:
+    """每个用户独立的数据工作台输出目录"""
+    d = BASE_OUTPUT_DIR / f"workspace_{user_id}"
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+def _scan_user_output_files(output_dir: Path, since_time: float = 0) -> list[dict]:
+    """扫描用户输出目录中的文件，返回 [{name, size, mtime}, ...]"""
+    files = []
+    if not output_dir.exists():
+        return files
+    for f in sorted(output_dir.iterdir(), key=lambda x: x.stat().st_mtime, reverse=True):
+        if f.is_file():
+            mtime = f.stat().st_mtime
+            if since_time > 0 and mtime < since_time:
+                continue
+            files.append({
+                "name": f.name,
+                "size": f.stat().st_size,
+                "mtime": mtime,
+            })
+    return files
 
 
 # --- Helper: 从 tool_result content 提取纯文本 ---
@@ -103,8 +134,10 @@ class DownloadRequest(BaseModel):
     """要下载的文件路径列表"""
 
 
-def build_prompt(message: str, history: list[dict] | None, files: list[FileInfo] | None = None) -> str:
+def build_prompt(message: str, history: list[dict] | None, files: list[FileInfo] | None = None, user_id: int = 0) -> str:
     parts = []
+    # 当前用户的输出目录
+    user_dir = _user_chat_output_dir(user_id)
     # 如果有上传的文件，在前面附上文件内容
     if files:
         parts.append("<上传的文件>")
@@ -115,9 +148,9 @@ def build_prompt(message: str, history: list[dict] | None, files: list[FileInfo]
                 try:
                     with open(fpath, "r", encoding="utf-8", errors="replace") as fh:
                         content = fh.read(5000)  # 限制读取前5000字符
-                    parts.append(f"--- {f.name} ({f.type}) ---\n{content}\n---")
+                    parts.append(f"--- {f.name} ({f.type}) ---\\n{content}\\n---")
                 except Exception:
-                    parts.append(f"--- {f.name} ---\n(无法读取文件内容)")
+                    parts.append(f"--- {f.name} ---\\n(无法读取文件内容)")
         parts.append("</上传的文件>")
     if history:
         for msg in history:
@@ -125,7 +158,14 @@ def build_prompt(message: str, history: list[dict] | None, files: list[FileInfo]
             parts.append(f"{role}: {msg['content']}")
     parts.append(f"User: {message}")
     parts.append("")
-    parts.append("===== \u8f93\u51fa\u8981\u6c42 =====\n\u5982\u679c\u4f60\u751f\u6210\u4e86\u6570\u636e\u6587\u4ef6\uff08CSV\u3001Excel\u3001JSON\u3001\u62a5\u544a\u7b49\uff09\uff0c\u8bf7\u4fdd\u5b58\u5230 /workspace/chat-output/ \u76ee\u5f55\u4e0b\u3002\n\u8f93\u51fa\u6587\u4ef6\u540d\u683c\u5f0f\uff1aoutput_\u65f6\u95f4\u6233.\u6269\u5c55\u540d\uff08\u5982 output_1700000000.xlsx\uff09\n\u5982\u679c\u7528\u6237\u6ca1\u6709\u6307\u5b9a\u8f93\u51fa\u683c\u5f0f\uff0c\u9ed8\u8ba4\u8f93\u51fa CSV\uff08utf-8-sig \u7f16\u7801\uff0cExcel \u53ef\u6253\u5f00\uff09\n\u5904\u7406\u5b8c\u6210\u540e\uff0c\u5728\u56de\u590d\u4e2d\u8bf4\u660e\u751f\u6210\u7684\u6587\u4ef6\u540d\u548c\u5185\u5bb9\u6982\u8981\u3002")
+    # 输出要求 - 使用用户隔离目录
+    output_prompt = f"""
+===== 输出要求 =====
+如果你生成了数据文件（CSV、Excel、JSON、报告等），请保存到 {user_dir} 目录下。
+输出文件名格式：output_时间戳.扩展名（如 output_1700000000.xlsx）
+如果用户没有指定输出格式，默认输出 CSV（utf-8-sig 编码，Excel 可打开）
+处理完成后，在回复中说明生成的文件名和内容概要。"""
+    parts.append(output_prompt.strip())
     return "\n\n".join(parts)
 
 
@@ -186,7 +226,8 @@ async def chat_stream(
 ):
     async def event_stream():
         start_time = time.time()
-        prompt = build_prompt(req.message, req.history, req.files)
+        prompt = build_prompt(req.message, req.history, req.files, user_id=user.id)
+        user_output_dir = _user_chat_output_dir(user.id)
 
         # ── 余额检查 ──
         from app.database import SessionLocal
@@ -344,8 +385,8 @@ async def chat_stream(
 
                     # 扫描输出目录中的新文件
                     output_files = []
-                    if CHAT_OUTPUT_DIR.exists():
-                        for f in sorted(CHAT_OUTPUT_DIR.iterdir(), key=lambda x: x.stat().st_mtime, reverse=True):
+                    if user_output_dir.exists():
+                        for f in sorted(user_output_dir.iterdir(), key=lambda x: x.stat().st_mtime, reverse=True):
                             if f.is_file() and f.stat().st_mtime > start_time:
                                 output_files.append(f.name)
 
@@ -456,8 +497,8 @@ async def chat_stream(
             changed_files = _get_changed_files()
             # 扫描输出目录中的新文件
             output_files = []
-            if CHAT_OUTPUT_DIR.exists():
-                for f in sorted(CHAT_OUTPUT_DIR.iterdir(), key=lambda x: x.stat().st_mtime, reverse=True):
+            if user_output_dir.exists():
+                for f in sorted(user_output_dir.iterdir(), key=lambda x: x.stat().st_mtime, reverse=True):
                     if f.is_file() and f.stat().st_mtime > start_time:
                         output_files.append(f.name)
             elapsed = time.time() - start_time
@@ -504,9 +545,10 @@ async def download_files(req: DownloadRequest, user=Depends(get_current_user)):
 
 @router.get("/download-output/{filename}")
 async def download_output_file(filename: str, user=Depends(get_current_user)):
-    """下载 AI 处理生成的输出文件"""
+    """下载 AI 处理生成的输出文件（用户隔离，只能下载自己的）"""
     safe = os.path.basename(filename)
-    file_path = CHAT_OUTPUT_DIR / safe
+    user_dir = _user_chat_output_dir(user.id)
+    file_path = user_dir / safe
     if not file_path.exists():
         raise HTTPException(404, "文件不存在或已过期")
     return FileResponse(
@@ -514,6 +556,50 @@ async def download_output_file(filename: str, user=Depends(get_current_user)):
         filename=safe,
         media_type="application/octet-stream",
     )
+
+
+@router.get("/my-files")
+def list_my_files(user=Depends(get_current_user)):
+    """列出当前用户所有已生成的文件"""
+    user_dir = _user_chat_output_dir(user.id)
+    files = _scan_user_output_files(user_dir)
+    total_size = sum(f["size"] for f in files)
+    return {
+        "user_id": user.id,
+        "total_files": len(files),
+        "total_size": total_size,
+        "files": [
+            {
+                "name": f["name"],
+                "size": f["size"],
+                "size_display": _format_size(f["size"]),
+                "mtime": f["mtime"],
+                "mtime_display": time.strftime("%Y-%m-%d %H:%M", time.localtime(f["mtime"])),
+            }
+            for f in files
+        ],
+    }
+
+
+@router.delete("/my-files/{filename}")
+def delete_my_file(filename: str, user=Depends(get_current_user)):
+    """删除当前用户的一个文件"""
+    safe = os.path.basename(filename)
+    user_dir = _user_chat_output_dir(user.id)
+    file_path = user_dir / safe
+    if not file_path.exists():
+        raise HTTPException(404, "文件不存在")
+    file_path.unlink()
+    return {"message": f"已删除 {safe}"}
+
+
+def _format_size(size: int) -> str:
+    if size < 1024:
+        return f"{size} B"
+    elif size < 1024 * 1024:
+        return f"{size/1024:.1f} KB"
+    else:
+        return f"{size/1024/1024:.1f} MB"
 
 
 @router.post("/upload")
