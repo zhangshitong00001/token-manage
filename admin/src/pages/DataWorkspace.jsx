@@ -41,6 +41,7 @@ export default function DataWorkspace() {
   }
 
   useEffect(() => { loadOutputFiles() }, [])
+  const [status, setStatus] = useState('idle')
   const [streamText, setStreamText] = useState('')
   const [currentTool, setCurrentTool] = useState('')
   const [resultText, setResultText] = useState('')

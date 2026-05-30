@@ -62,7 +62,13 @@ function UserDashboard() {
 
   const convColumns = [
     {
-      title: '时间', dataIndex: 'time', width: 140,
+      title: '来源', dataIndex: 'source', width: 80, align: 'center',
+      render: (src) => src === 'workspace'
+        ? <Tag color="purple" style={{ fontSize: 10 }}>数据</Tag>
+        : <Tag color="blue" style={{ fontSize: 10 }}>对话</Tag>,
+    },
+    {
+      title: '时间', dataIndex: 'time', width: 130,
       render: (t) => dayjs(t).format('MM-DD HH:mm'),
     },
     {

@@ -137,6 +137,14 @@ async def workspace_process(
 
         yield f"data: {json.dumps({'type': 'start', 'message': 'AI 数据处理引擎已启动...'})}\n\n"
 
+        # 保存用户请求到 ChatHistory
+        try:
+            from app.models.chat_history import save_chat_message
+            save_chat_message(user.id, "user", f"[数据处理] {description[:500]}")
+        except Exception:
+            pass
+
+        # 保存 assistant 回复到 ChatHistory（处理完成后）
         collected_text = ""
         error_occurred = False
 
@@ -226,6 +234,14 @@ async def workspace_process(
                     output_files.append(f.name)
 
         yield f"data: {json.dumps({'type': 'done', 'content': collected_text, 'output_files': output_files, 'duration_ms': int((time.time() - start_time) * 1000)})}\n\n"
+
+        # 保存 assistant 回复到 ChatHistory
+        if collected_text:
+            try:
+                from app.models.chat_history import save_chat_message
+                save_chat_message(user.id, "assistant", collected_text[:1000])
+            except Exception:
+                pass
 
         # ── 扣减 Token 余额（按字数估算）──
         if collected_text:
