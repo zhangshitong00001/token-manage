@@ -8,7 +8,9 @@ import {
   AppstoreOutlined, BuildOutlined,
 } from '@ant-design/icons'
 import { Routes, Route, useNavigate, useLocation } from 'react-router-dom'
+import Landing from './pages/Landing'
 import Login from './pages/Login'
+import Register from './pages/Register'
 import Dashboard from './pages/Dashboard'
 import Users from './pages/Users'
 import Orders from './pages/Orders'
@@ -26,16 +28,16 @@ const { Header, Sider, Content } = Layout
 
 // 全部菜单项
 const allMenuItems = [
-  { key: '/admin/dashboard', icon: <DashboardOutlined />, label: '仪表盘' },
-  { key: '/admin/users', icon: <UserOutlined />, label: '用户管理', adminOnly: true },
-  { key: '/admin/orders', icon: <ShoppingCartOutlined />, label: '订单管理', adminOnly: true },
-  { key: '/admin/packages', icon: <DollarOutlined />, label: '套餐管理', adminOnly: true },
-  { key: '/admin/price', icon: <SettingOutlined />, label: '价格配置', adminOnly: true },
-  { key: '/admin/usage', icon: <FileTextOutlined />, label: '消耗记录' },
-  { key: '/admin/system-usage', icon: <BarChartOutlined />, label: '系统消耗' },
-  { key: '/admin/upload', icon: <CloudUploadOutlined />, label: '文件上传' },
-  { key: '/admin/workspace', icon: <AppstoreOutlined />, label: '数据工作台' },
-  { key: '/admin/claude-terminal', icon: <BuildOutlined />, label: 'Claude Code 终端' },
+  { key: '/dashboard', icon: <DashboardOutlined />, label: '仪表盘' },
+  { key: '/users', icon: <UserOutlined />, label: '用户管理', adminOnly: true },
+  { key: '/orders', icon: <ShoppingCartOutlined />, label: '订单管理', adminOnly: true },
+  { key: '/packages', icon: <DollarOutlined />, label: '套餐管理', adminOnly: true },
+  { key: '/price', icon: <SettingOutlined />, label: '价格配置', adminOnly: true },
+  { key: '/usage', icon: <FileTextOutlined />, label: '消耗记录' },
+  { key: '/system-usage', icon: <BarChartOutlined />, label: '系统消耗' },
+  { key: '/upload', icon: <CloudUploadOutlined />, label: '文件上传' },
+  { key: '/workspace', icon: <AppstoreOutlined />, label: '数据工作台' },
+  { key: '/claude-terminal', icon: <BuildOutlined />, label: 'Claude Code 终端' },
 ]
 
 function getFilteredMenus(isAdmin) {
@@ -117,8 +119,18 @@ function AppLayout() {
     })
   }, [sessionExpired, dismissModal, resetActivity])
 
+  // 未登录 → 显示公开页面（根据路由决定显示哪个）
   if (!token) {
-    return <Login onLogin={() => window.location.reload()} />
+    const path = location.pathname
+    if (path === '/login') return <Login onLogin={() => window.location.reload()} onBack={(to) => navigate(to === 'register' ? '/register' : '/')} />
+    if (path === '/register') return <Register onRegistered={(email) => navigate('/login')} onBack={() => navigate('/login')} />
+    // 默认显示 Landing 页
+    return (
+      <Landing
+        onGoToLogin={() => navigate('/login')}
+        onGoToRegister={() => navigate('/register')}
+      />
+    )
   }
 
   const handleMenuClick = ({ key }) => {
@@ -150,7 +162,7 @@ function AppLayout() {
       label: (
         <span>
           {user?.phone?.replace(/(\d{3})\d{4}(\d{4})/, '$1****$2')}
-          <Tag color="blue" style={{ marginLeft: 8, fontSize: 10 }}>管理员</Tag>
+          <Tag color="blue" style={{ marginLeft: 8, fontSize: 10 }}>{isAdmin ? '管理员' : '用户'}</Tag>
         </span>
       ),
       disabled: true,
@@ -224,7 +236,7 @@ function AppLayout() {
                   style={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' }}
                 />
                 <span style={{ color: '#333', fontWeight: 500 }}>
-                  {user?.nickname || '管理员'}
+                  {user?.nickname || '用户'}
                 </span>
                 <DownOutlined style={{ color: '#999', fontSize: 10 }} />
               </div>
@@ -233,16 +245,16 @@ function AppLayout() {
         </Header>
         <Content style={{ margin: 16, background: '#fff', borderRadius: 8, padding: 24, minHeight: 360 }}>
           <Routes>
-            <Route path="/admin/dashboard" element={<Dashboard />} />
-            <Route path="/admin/users" element={<Users />} />
-            <Route path="/admin/orders" element={<Orders />} />
-            <Route path="/admin/packages" element={<Packages />} />
-            <Route path="/admin/price" element={<PriceConfig />} />
-            <Route path="/admin/usage" element={<UsageLog />} />
-            <Route path="/admin/system-usage" element={<SystemUsage />} />
-            <Route path="/admin/upload" element={<UploadPage />} />
-            <Route path="/admin/workspace" element={<DataWorkspace />} />
-            <Route path="/admin/claude-terminal" element={<ClaudeTerminal />} />
+            <Route path="/dashboard" element={<Dashboard />} />
+            <Route path="/users" element={<Users />} />
+            <Route path="/orders" element={<Orders />} />
+            <Route path="/packages" element={<Packages />} />
+            <Route path="/price" element={<PriceConfig />} />
+            <Route path="/usage" element={<UsageLog />} />
+            <Route path="/system-usage" element={<SystemUsage />} />
+            <Route path="/upload" element={<UploadPage />} />
+            <Route path="/workspace" element={<DataWorkspace />} />
+            <Route path="/claude-terminal" element={<ClaudeTerminal />} />
             <Route path="*" element={<Dashboard />} />
           </Routes>
         </Content>
