@@ -18,6 +18,63 @@ def get_profile(current_user: User = Depends(get_current_user)):
     return UserProfile.model_validate(current_user)
 
 
+@router.get("/my-usage")
+def get_my_usage(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """获取当前用户自己的消耗汇总（今日/本月/余额）"""
+    from datetime import date, timedelta, datetime
+    from sqlalchemy import func
+    from app.models import TokenUsage
+
+    today = date.today()
+    today_start = datetime.combine(today, datetime.min.time())
+    month_start = today.replace(day=1)
+    month_start_dt = datetime.combine(month_start, datetime.min.time())
+
+    # 今日消耗
+    today_records = db.query(
+        func.coalesce(func.sum(TokenUsage.input_tokens), 0),
+        func.coalesce(func.sum(TokenUsage.output_tokens), 0),
+        func.coalesce(func.sum(TokenUsage.total_cost), 0),
+        func.count(TokenUsage.id),
+    ).filter(
+        TokenUsage.user_id == current_user.id,
+        TokenUsage.usage_time >= today_start,
+    ).first()
+
+    # 本月消耗
+    month_records = db.query(
+        func.coalesce(func.sum(TokenUsage.input_tokens), 0),
+        func.coalesce(func.sum(TokenUsage.output_tokens), 0),
+        func.coalesce(func.sum(TokenUsage.total_cost), 0),
+        func.count(TokenUsage.id),
+    ).filter(
+        TokenUsage.user_id == current_user.id,
+        TokenUsage.usage_time >= month_start_dt,
+    ).first()
+
+    return {
+        "user_id": current_user.id,
+        "nickname": current_user.nickname,
+        "email": current_user.email,
+        "token_balance": current_user.token_balance or 0,
+        "today": {
+            "input_tokens": int(today_records[0]),
+            "output_tokens": int(today_records[1]),
+            "total_cost": int(today_records[2]),
+            "call_count": int(today_records[3]),
+        },
+        "month": {
+            "input_tokens": int(month_records[0]),
+            "output_tokens": int(month_records[1]),
+            "total_cost": int(month_records[2]),
+            "call_count": int(month_records[3]),
+        },
+    }
+
+
 @router.put("/deepseek-key")
 def bind_deepseek_key(
     data: UserBindKey,

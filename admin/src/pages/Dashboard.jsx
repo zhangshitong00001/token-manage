@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react'
-import { Row, Col, Card, Spin, Table, Tag, Button, Modal, Descriptions, message, Tooltip } from 'antd'
+import { Row, Col, Card, Spin, Table, Tag, Button, Modal, Descriptions, message, Tooltip, Statistic } from 'antd'
 import {
   WalletOutlined, RiseOutlined, ReloadOutlined,
   DollarOutlined, FileTextOutlined,
   EyeOutlined, EyeInvisibleOutlined, CopyOutlined,
-  WarningOutlined, UserOutlined,
+  WarningOutlined, UserOutlined, ThunderboltOutlined,
 } from '@ant-design/icons'
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as ReTooltip,
@@ -14,7 +14,130 @@ import { DatePicker } from 'antd'
 import dayjs from 'dayjs'
 import api from '../api'
 
-export default function Dashboard() {
+// ===== 普通用户仪表盘 =====
+function UserDashboard() {
+  const [loading, setLoading] = useState(true)
+  const [profile, setProfile] = useState(null)
+  const [usage, setUsage] = useState(null)
+  const [records, setRecords] = useState([])
+
+  const loadData = () => {
+    setLoading(true)
+    Promise.all([
+      api.get('/user/my-usage'),
+      api.get('/user/profile'),
+      api.get('/admin/usage/list?page_size=10'),
+    ]).then(([u, p, r]) => {
+      setUsage(u)
+      setProfile(p)
+      setRecords(r.items || [])
+    }).catch(console.error).finally(() => setLoading(false))
+  }
+
+  useEffect(() => { loadData() }, [])
+
+  if (loading) return <Spin size="large" style={{ display: 'block', textAlign: 'center', marginTop: 80 }} />
+
+  const usageColumns = [
+    { title: '时间', dataIndex: 'usage_time', render: (t) => dayjs(t).format('MM-DD HH:mm') },
+    { title: '输入Token', dataIndex: 'input_tokens', render: (v) => (v || 0).toLocaleString() },
+    { title: '输出Token', dataIndex: 'output_tokens', render: (v) => (v || 0).toLocaleString() },
+    { title: '消耗', dataIndex: 'total_cost', render: (v) => <Tag color="blue">{(v || 0).toLocaleString()}</Tag> },
+  ]
+
+  return (
+    <div>
+      <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <h3 style={{ margin: 0 }}>
+          👋 你好，{profile?.nickname || profile?.email || '用户'}
+        </h3>
+        <Button icon={<ReloadOutlined />} onClick={loadData} loading={loading}>刷新</Button>
+      </div>
+
+      {/* 余额卡片 */}
+      <Row gutter={[12, 12]} style={{ marginBottom: 16 }}>
+        <Col xs={24} lg={8}>
+          <Card style={{
+            borderRadius: 12, height: '100%',
+            background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+            border: 'none', color: '#fff',
+          }}>
+            <div style={{ fontSize: 12, opacity: 0.85, marginBottom: 8 }}>
+              <WalletOutlined style={{ marginRight: 4 }} />我的 Token 余额
+            </div>
+            <div style={{ fontSize: 32, fontWeight: 700 }}>
+              {(usage?.token_balance || 0).toLocaleString()}
+            </div>
+            <div style={{ fontSize: 11, opacity: 0.6, marginTop: 4 }}>Token</div>
+          </Card>
+        </Col>
+        <Col xs={12} lg={8}>
+          <Card style={{ borderRadius: 12, height: '100%' }}>
+            <Statistic
+              title={<span><ThunderboltOutlined style={{ marginRight: 4 }} />今日消耗</span>}
+              value={usage?.today?.total_cost || 0}
+              suffix="Token"
+              valueStyle={{ color: '#fa8c16', fontWeight: 700 }}
+            />
+            <div style={{ fontSize: 11, color: '#999', marginTop: 4 }}>
+              输入 {usage?.today?.input_tokens?.toLocaleString()} / 输出 {usage?.today?.output_tokens?.toLocaleString()}
+            </div>
+          </Card>
+        </Col>
+        <Col xs={12} lg={8}>
+          <Card style={{ borderRadius: 12, height: '100%' }}>
+            <Statistic
+              title={<span><FileTextOutlined style={{ marginRight: 4 }} />本月累计</span>}
+              value={usage?.month?.total_cost || 0}
+              suffix="Token"
+              valueStyle={{ color: '#1677ff', fontWeight: 700 }}
+            />
+            <div style={{ fontSize: 11, color: '#999', marginTop: 4 }}>
+              调用 {usage?.month?.call_count} 次
+            </div>
+          </Card>
+        </Col>
+      </Row>
+
+      {/* 微简报 */}
+      <Row gutter={[12, 12]} style={{ marginBottom: 16 }}>
+        <Col xs={8}>
+          <Card size="small" style={{ borderRadius: 8, textAlign: 'center' }}>
+            <div style={{ fontSize: 11, color: '#999' }}>今日调用</div>
+            <div style={{ fontSize: 18, fontWeight: 600 }}>{usage?.today?.call_count || 0}</div>
+          </Card>
+        </Col>
+        <Col xs={8}>
+          <Card size="small" style={{ borderRadius: 8, textAlign: 'center' }}>
+            <div style={{ fontSize: 11, color: '#999' }}>今日输入</div>
+            <div style={{ fontSize: 18, fontWeight: 600 }}>{(usage?.today?.input_tokens || 0).toLocaleString()}</div>
+          </Card>
+        </Col>
+        <Col xs={8}>
+          <Card size="small" style={{ borderRadius: 8, textAlign: 'center' }}>
+            <div style={{ fontSize: 11, color: '#999' }}>今日输出</div>
+            <div style={{ fontSize: 18, fontWeight: 600 }}>{(usage?.today?.output_tokens || 0).toLocaleString()}</div>
+          </Card>
+        </Col>
+      </Row>
+
+      {/* 消耗记录 */}
+      <Card title="📋 我的消耗记录" style={{ borderRadius: 12 }}>
+        <Table
+          dataSource={records}
+          columns={usageColumns}
+          rowKey="id"
+          pagination={false}
+          size="small"
+          locale={{ emptyText: '暂无消耗记录' }}
+        />
+      </Card>
+    </div>
+  )
+}
+
+// ===== 管理员仪表盘（保持不变） =====
+function AdminDashboard() {
   const [loading, setLoading] = useState(true)
   const [usageData, setUsageData] = useState([])
   const [summary, setSummary] = useState(null)
@@ -29,20 +152,6 @@ export default function Dashboard() {
 
   const loadData = () => {
     setLoading(true)
-    const userStr = localStorage.getItem('admin_user')
-    const user = userStr ? JSON.parse(userStr) : null
-    const isAdmin = user?.role === 'admin'
-
-    // 非管理员只加载用量记录
-    if (!isAdmin) {
-      api.get('/admin/usage/list?page_size=10')
-        .then((u) => { setUsageData(u.items) })
-        .catch(() => {})
-        .finally(() => setLoading(false))
-      return
-    }
-
-    // 管理员加载全部数据
     Promise.all([
       api.get('/admin/usage/list?page_size=10'),
       api.get('/admin/deepseek/summary'),
@@ -95,14 +204,7 @@ export default function Dashboard() {
   const monthlyCosts = summary?.monthly_costs || []
   const cnyCost = monthlyCosts.find(c => c.currency === 'CNY') || {}
   const usdCost = monthlyCosts.find(c => c.currency === 'USD') || {}
-  const isAdmin = (() => {
-    try {
-      const u = JSON.parse(localStorage.getItem('admin_user') || '{}')
-      return u?.role === 'admin'
-    } catch { return false }
-  })()
 
-  // 柱形图数据
   const amountData = usage?.amount?.data?.biz_data
   const days = amountData?.days || []
   const allDays = days.filter(d => d.data?.some(m => m.usage?.some(u => parseInt(u.amount) > 0)))
@@ -212,47 +314,40 @@ export default function Dashboard() {
 
   return (
     <div>
-      {/* ===== 刷新 ===== */}
       <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'flex-end' }}>
         <Button icon={<ReloadOutlined />} onClick={loadData} loading={loading}>刷新数据</Button>
       </div>
 
-      {/* ===== 第1行：充值统计卡片（单独一行） ===== */}
-      {isAdmin && (
-        <Row gutter={[12, 12]} style={{ marginBottom: 16 }}>
+      <Row gutter={[12, 12]} style={{ marginBottom: 16 }}>
         <Col xs={12} lg={6}>
-          <Card style={{ borderRadius: 12, height: '100%', background: 'linear-gradient(135deg, #52c41a 0%, #237804 100%)', color: '#fff', border: 'none' }} bodyStyle={{ padding: '16px' }}>
+          <Card style={{ borderRadius: 12, height: '100%', background: 'linear-gradient(135deg, #52c41a 0%, #237804 100%)', color: '#fff', border: 'none' }}>
             <div style={{ fontSize: 11, opacity: 0.85, marginBottom: 6 }}>今日充值成功</div>
             <div style={{ fontSize: 22, fontWeight: 700 }}>¥{(stats?.today_total_recharge || 0).toFixed(2)}</div>
           </Card>
         </Col>
         <Col xs={12} lg={6}>
-          <Card style={{ borderRadius: 12, height: '100%', background: 'linear-gradient(135deg, #1677ff 0%, #0958d9 100%)', color: '#fff', border: 'none' }} bodyStyle={{ padding: '16px' }}>
+          <Card style={{ borderRadius: 12, height: '100%', background: 'linear-gradient(135deg, #1677ff 0%, #0958d9 100%)', color: '#fff', border: 'none' }}>
             <div style={{ fontSize: 11, opacity: 0.85, marginBottom: 6 }}>历史充值总额</div>
             <div style={{ fontSize: 22, fontWeight: 700 }}>¥{(stats?.total_recharge_amount || 0).toFixed(2)}</div>
           </Card>
         </Col>
         <Col xs={12} lg={6}>
-          <Card style={{ borderRadius: 12, height: '100%', background: 'linear-gradient(135deg, #fa8c16 0%, #d46b08 100%)', color: '#fff', border: 'none' }} bodyStyle={{ padding: '16px' }}>
+          <Card style={{ borderRadius: 12, height: '100%', background: 'linear-gradient(135deg, #fa8c16 0%, #d46b08 100%)', color: '#fff', border: 'none' }}>
             <div style={{ fontSize: 11, opacity: 0.85, marginBottom: 6 }}>总用户</div>
             <div style={{ fontSize: 22, fontWeight: 700 }}>{stats?.total_users || 0}</div>
           </Card>
         </Col>
         <Col xs={12} lg={6}>
-          <Card style={{ borderRadius: 12, height: '100%', background: 'linear-gradient(135deg, #eb2f96 0%, #c41d7f 100%)', color: '#fff', border: 'none' }} bodyStyle={{ padding: '16px' }}>
+          <Card style={{ borderRadius: 12, height: '100%', background: 'linear-gradient(135deg, #eb2f96 0%, #c41d7f 100%)', color: '#fff', border: 'none' }}>
             <div style={{ fontSize: 11, opacity: 0.85, marginBottom: 6 }}>活跃用户</div>
             <div style={{ fontSize: 22, fontWeight: 700 }}>{stats?.active_users || 0}</div>
           </Card>
         </Col>
       </Row>
-      )}
 
-      {/* ===== 第2行：DeepSeek 余额 + 本月Token + 可用Token ===== */}
-      {isAdmin && (
-        <Row gutter={[12, 12]} style={{ marginBottom: 16 }}>
+      <Row gutter={[12, 12]} style={{ marginBottom: 16 }}>
         <Col xs={24} lg={10}>
-          <Card style={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', borderRadius: 12, border: 'none', height: '100%' }}
-            bodyStyle={{ padding: '20px' }}>
+          <Card style={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', borderRadius: 12, border: 'none', height: '100%' }}>
             <div style={{ color: 'rgba(255,255,255,0.8)', fontSize: 12, marginBottom: 10 }}>
               <DollarOutlined style={{ marginRight: 4 }} />DeepSeek 余额
             </div>
@@ -276,28 +371,24 @@ export default function Dashboard() {
           </Card>
         </Col>
         <Col xs={12} lg={7}>
-          <Card style={{ borderRadius: 12, height: '100%' }} bodyStyle={{ padding: '16px' }}>
+          <Card style={{ borderRadius: 12, height: '100%' }}>
             <div style={{ color: '#999', fontSize: 11, marginBottom: 6 }}><FileTextOutlined style={{ marginRight: 4 }} />本月 Token</div>
             <div style={{ fontSize: 22, fontWeight: 700, color: '#667eea' }}>{formatNum(summary?.monthly_token_usage || 0)}</div>
           </Card>
         </Col>
         <Col xs={12} lg={7}>
-          <Card style={{ borderRadius: 12, height: '100%' }} bodyStyle={{ padding: '16px' }}>
+          <Card style={{ borderRadius: 12, height: '100%' }}>
             <div style={{ color: '#999', fontSize: 11, marginBottom: 6 }}><RiseOutlined style={{ marginRight: 4 }} />可用 Token</div>
             <div style={{ fontSize: 22, fontWeight: 700, color: '#52c41a' }}>{formatNum(summary?.total_available_token_estimation || 0)}</div>
           </Card>
         </Col>
       </Row>
-      )}
 
-      {/* ===== 第2行起：管理员专属内容 ===== */}
-      {isAdmin && (<>
-      <Card title="🔐 API 密钥管理" style={{ borderRadius: 12, marginBottom: 16 }} bodyStyle={{ padding: 0 }}>
+      <Card title="🔐 API 密钥管理" style={{ borderRadius: 12, marginBottom: 16 }}>
         <Table dataSource={apiKeys} columns={keyColumns} rowKey="tracking_id" pagination={false}
           size="small" locale={{ emptyText: '暂无 API Key' }} />
       </Card>
 
-      {/* ===== 用量 + 费用并排 ===== */}
       <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
         <Col xs={24} lg={12}>
           <Card title="📊 本月 Token 用量（按模型）" style={{ borderRadius: 12 }}>
@@ -358,7 +449,6 @@ export default function Dashboard() {
         </Col>
       </Row>
 
-      {/* ===== 第5行：趋势图表（全宽） ===== */}
       <Card title="📈 每日 Token 用量趋势" style={{ borderRadius: 12, marginBottom: 16 }}
         extra={
           <DatePicker.RangePicker size="small" placeholder={['起始日期', '结束日期']}
@@ -385,14 +475,11 @@ export default function Dashboard() {
           </div>
         ) : <div style={{ color: '#999', textAlign: 'center', padding: 20 }}>暂无数据</div>}
       </Card>
-      </>)}
 
-      {/* ===== 最新消耗记录 ===== */}
       <Card title="最新消耗记录" style={{ borderRadius: 12, marginBottom: 16 }}>
         <Table dataSource={usageData} columns={usageColumns} rowKey="id" pagination={false} size="small" />
       </Card>
 
-      {/* ===== API Key 详情弹窗 ===== */}
       <Modal title="API Key 详情" open={modalVisible} onCancel={() => setModalVisible(false)} footer={null} width={480}>
         {modalKey && (
           <Descriptions column={1} size="small" bordered>
@@ -418,4 +505,13 @@ export default function Dashboard() {
       </Modal>
     </div>
   )
+}
+
+// ===== 主入口：根据角色选择仪表盘 =====
+export default function Dashboard() {
+  const userStr = localStorage.getItem('admin_user')
+  const user = userStr ? JSON.parse(userStr) : null
+  const isAdmin = user?.role === 'admin'
+
+  return isAdmin ? <AdminDashboard /> : <UserDashboard />
 }
