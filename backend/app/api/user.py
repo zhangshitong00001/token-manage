@@ -75,6 +75,84 @@ def get_my_usage(
     }
 
 
+@router.get("/my-conversations")
+def get_my_conversations(
+    page: int = 1,
+    page_size: int = 20,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """获取当前用户的对话会话列表（每轮对话 + Token 消耗统计）"""
+    from app.models import TokenUsage
+    from app.models.chat_history import ChatHistory
+    from sqlalchemy import func as sa_func, desc
+
+    from datetime import datetime, timedelta
+
+    # 1. 按 request_id 分组查询 TokenUsage（每个 request_id 是一次对话）
+    # request_id 格式: chat_{user_id}_{timestamp}
+    prefix = f"chat_{current_user.id}_"
+    usage_q = db.query(
+        TokenUsage.request_id,
+        sa_func.sum(TokenUsage.input_tokens).label("total_input"),
+        sa_func.sum(TokenUsage.output_tokens).label("total_output"),
+        sa_func.sum(TokenUsage.total_cost).label("total_cost"),
+        sa_func.min(TokenUsage.usage_time).label("first_time"),
+        sa_func.max(TokenUsage.usage_time).label("last_time"),
+        sa_func.count(TokenUsage.id).label("call_count"),
+    ).filter(
+        TokenUsage.user_id == current_user.id,
+        TokenUsage.request_id.like(f"{prefix}%"),
+    ).group_by(TokenUsage.request_id).order_by(
+        desc("last_time")
+    )
+
+    total = usage_q.count()
+    usage_rows = usage_q.offset((page - 1) * page_size).limit(page_size).all()
+
+    # 2. 为每个会话找到对应的用户消息（取 ChatHistory 中该时间附近的第一条用户消息）
+    conversations = []
+    for r in usage_rows:
+        # 从 request_id 提取时间戳
+        ts_str = r.request_id.replace(prefix, "")
+        try:
+            req_ts = int(ts_str)
+            req_dt = datetime.fromtimestamp(req_ts)
+        except ValueError:
+            req_dt = r.first_time
+
+        # 查找该时间附近的第一条用户消息
+        user_msg = db.query(ChatHistory.content).filter(
+            ChatHistory.user_id == current_user.id,
+            ChatHistory.role == "user",
+            ChatHistory.created_at >= req_dt,
+            ChatHistory.created_at <= (req_dt + timedelta(seconds=30)),
+        ).order_by(ChatHistory.created_at.asc()).first()
+
+        msg_preview = ""
+        if user_msg and user_msg[0]:
+            msg_preview = user_msg[0][:120]
+            if len(user_msg[0]) > 120:
+                msg_preview += "..."
+
+        conversations.append({
+            "request_id": r.request_id,
+            "time": r.last_time.isoformat() if r.last_time else "",
+            "input_tokens": int(r.total_input or 0),
+            "output_tokens": int(r.total_output or 0),
+            "total_cost": int(r.total_cost or 0),
+            "call_count": int(r.call_count or 0),
+            "user_message": msg_preview,
+        })
+
+    return {
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+        "items": conversations,
+    }
+
+
 @router.put("/deepseek-key")
 def bind_deepseek_key(
     data: UserBindKey,

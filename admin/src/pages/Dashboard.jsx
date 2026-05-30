@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react'
-import { Row, Col, Card, Spin, Table, Tag, Button, Modal, Descriptions, message, Tooltip, Statistic } from 'antd'
+import { Row, Col, Card, Spin, Table, Tag, Button, Modal, Descriptions, message, Tooltip, Statistic, Tabs } from 'antd'
 import {
   WalletOutlined, RiseOutlined, ReloadOutlined,
   DollarOutlined, FileTextOutlined,
   EyeOutlined, EyeInvisibleOutlined, CopyOutlined,
-  WarningOutlined, UserOutlined, ThunderboltOutlined,
+  WarningOutlined, UserOutlined, ThunderboltOutlined, MessageOutlined,
 } from '@ant-design/icons'
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as ReTooltip,
@@ -20,6 +20,10 @@ function UserDashboard() {
   const [profile, setProfile] = useState(null)
   const [usage, setUsage] = useState(null)
   const [records, setRecords] = useState([])
+  const [conversations, setConversations] = useState([])
+  const [convTotal, setConvTotal] = useState(0)
+  const [convPage, setConvPage] = useState(1)
+  const [activeTab, setActiveTab] = useState('overview')
 
   const loadData = () => {
     setLoading(true)
@@ -27,11 +31,22 @@ function UserDashboard() {
       api.get('/user/my-usage'),
       api.get('/user/profile'),
       api.get('/admin/usage/list?page_size=10'),
-    ]).then(([u, p, r]) => {
+      api.get('/user/my-conversations?page=1&page_size=20'),
+    ]).then(([u, p, r, c]) => {
       setUsage(u)
       setProfile(p)
       setRecords(r.items || [])
+      setConversations(c.items || [])
+      setConvTotal(c.total || 0)
     }).catch(console.error).finally(() => setLoading(false))
+  }
+
+  const loadConversations = (page) => {
+    api.get(`/user/my-conversations?page=${page}&page_size=20`).then(c => {
+      setConversations(c.items || [])
+      setConvTotal(c.total || 0)
+      setConvPage(page)
+    }).catch(console.error)
   }
 
   useEffect(() => { loadData() }, [])
@@ -45,6 +60,148 @@ function UserDashboard() {
     { title: '消耗', dataIndex: 'total_cost', render: (v) => <Tag color="blue">{(v || 0).toLocaleString()}</Tag> },
   ]
 
+  const convColumns = [
+    {
+      title: '时间', dataIndex: 'time', width: 140,
+      render: (t) => dayjs(t).format('MM-DD HH:mm'),
+    },
+    {
+      title: '对话内容', dataIndex: 'user_message', ellipsis: true,
+      render: (msg) => (
+        <span style={{ color: msg ? '#333' : '#bbb', fontStyle: msg ? 'normal' : 'italic' }}>
+          {msg || '(暂无记录)'}
+        </span>
+      ),
+    },
+    {
+      title: '调用次数', dataIndex: 'call_count', width: 80, align: 'center',
+      render: (v) => <Tag>{v}</Tag>,
+    },
+    {
+      title: '输入', dataIndex: 'input_tokens', width: 90, align: 'right',
+      render: (v) => <span style={{ color: '#1677ff' }}>{(v || 0).toLocaleString()}</span>,
+    },
+    {
+      title: '输出', dataIndex: 'output_tokens', width: 90, align: 'right',
+      render: (v) => <span style={{ color: '#52c41a' }}>{(v || 0).toLocaleString()}</span>,
+    },
+    {
+      title: '消耗 Token', dataIndex: 'total_cost', width: 110, align: 'right',
+      render: (v) => <Tag color="blue" style={{ fontWeight: 600 }}>{(v || 0).toLocaleString()}</Tag>,
+    },
+  ]
+
+  const tabItems = [
+    {
+      key: 'overview',
+      label: <span><WalletOutlined /> 总览</span>,
+      children: (
+        <>
+          {/* 余额卡片 */}
+          <Row gutter={[12, 12]} style={{ marginBottom: 16 }}>
+            <Col xs={24} lg={8}>
+              <Card style={{
+                borderRadius: 12, height: '100%',
+                background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                border: 'none', color: '#fff',
+              }}>
+                <div style={{ fontSize: 12, opacity: 0.85, marginBottom: 8 }}>
+                  <WalletOutlined style={{ marginRight: 4 }} />我的 Token 余额
+                </div>
+                <div style={{ fontSize: 32, fontWeight: 700 }}>
+                  {(usage?.token_balance || 0).toLocaleString()}
+                </div>
+                <div style={{ fontSize: 11, opacity: 0.6, marginTop: 4 }}>Token</div>
+              </Card>
+            </Col>
+            <Col xs={12} lg={8}>
+              <Card style={{ borderRadius: 12, height: '100%' }}>
+                <Statistic
+                  title={<span><ThunderboltOutlined style={{ marginRight: 4 }} />今日消耗</span>}
+                  value={usage?.today?.total_cost || 0}
+                  suffix="Token"
+                  valueStyle={{ color: '#fa8c16', fontWeight: 700 }}
+                />
+                <div style={{ fontSize: 11, color: '#999', marginTop: 4 }}>
+                  输入 {usage?.today?.input_tokens?.toLocaleString()} / 输出 {usage?.today?.output_tokens?.toLocaleString()}
+                </div>
+              </Card>
+            </Col>
+            <Col xs={12} lg={8}>
+              <Card style={{ borderRadius: 12, height: '100%' }}>
+                <Statistic
+                  title={<span><FileTextOutlined style={{ marginRight: 4 }} />本月累计</span>}
+                  value={usage?.month?.total_cost || 0}
+                  suffix="Token"
+                  valueStyle={{ color: '#1677ff', fontWeight: 700 }}
+                />
+                <div style={{ fontSize: 11, color: '#999', marginTop: 4 }}>
+                  调用 {usage?.month?.call_count} 次
+                </div>
+              </Card>
+            </Col>
+          </Row>
+
+          {/* 微简报 */}
+          <Row gutter={[12, 12]} style={{ marginBottom: 16 }}>
+            <Col xs={8}>
+              <Card size="small" style={{ borderRadius: 8, textAlign: 'center' }}>
+                <div style={{ fontSize: 11, color: '#999' }}>今日调用</div>
+                <div style={{ fontSize: 18, fontWeight: 600 }}>{usage?.today?.call_count || 0}</div>
+              </Card>
+            </Col>
+            <Col xs={8}>
+              <Card size="small" style={{ borderRadius: 8, textAlign: 'center' }}>
+                <div style={{ fontSize: 11, color: '#999' }}>今日输入</div>
+                <div style={{ fontSize: 18, fontWeight: 600 }}>{(usage?.today?.input_tokens || 0).toLocaleString()}</div>
+              </Card>
+            </Col>
+            <Col xs={8}>
+              <Card size="small" style={{ borderRadius: 8, textAlign: 'center' }}>
+                <div style={{ fontSize: 11, color: '#999' }}>今日输出</div>
+                <div style={{ fontSize: 18, fontWeight: 600 }}>{(usage?.today?.output_tokens || 0).toLocaleString()}</div>
+              </Card>
+            </Col>
+          </Row>
+
+          {/* 消耗记录 */}
+          <Card title="📋 我的消耗记录" style={{ borderRadius: 12 }}>
+            <Table
+              dataSource={records}
+              columns={usageColumns}
+              rowKey="id"
+              pagination={false}
+              size="small"
+              locale={{ emptyText: '暂无消耗记录' }}
+            />
+          </Card>
+        </>
+      ),
+    },
+    {
+      key: 'conversations',
+      label: <span><MessageOutlined /> 我的对话 ({convTotal})</span>,
+      children: (
+        <Card style={{ borderRadius: 12 }}>
+          <Table
+            dataSource={conversations}
+            columns={convColumns}
+            rowKey="request_id"
+            size="small"
+            pagination={{
+              current: convPage,
+              pageSize: 20,
+              total: convTotal,
+              onChange: loadConversations,
+              showSizeChanger: false,
+            }}
+            locale={{ emptyText: '暂无对话记录。在 AI 对话中提问后，每次会话的消耗会显示在这里。' }}
+          />
+        </Card>
+      ),
+    },
+  ]
+
   return (
     <div>
       <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -53,85 +210,7 @@ function UserDashboard() {
         </h3>
         <Button icon={<ReloadOutlined />} onClick={loadData} loading={loading}>刷新</Button>
       </div>
-
-      {/* 余额卡片 */}
-      <Row gutter={[12, 12]} style={{ marginBottom: 16 }}>
-        <Col xs={24} lg={8}>
-          <Card style={{
-            borderRadius: 12, height: '100%',
-            background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-            border: 'none', color: '#fff',
-          }}>
-            <div style={{ fontSize: 12, opacity: 0.85, marginBottom: 8 }}>
-              <WalletOutlined style={{ marginRight: 4 }} />我的 Token 余额
-            </div>
-            <div style={{ fontSize: 32, fontWeight: 700 }}>
-              {(usage?.token_balance || 0).toLocaleString()}
-            </div>
-            <div style={{ fontSize: 11, opacity: 0.6, marginTop: 4 }}>Token</div>
-          </Card>
-        </Col>
-        <Col xs={12} lg={8}>
-          <Card style={{ borderRadius: 12, height: '100%' }}>
-            <Statistic
-              title={<span><ThunderboltOutlined style={{ marginRight: 4 }} />今日消耗</span>}
-              value={usage?.today?.total_cost || 0}
-              suffix="Token"
-              valueStyle={{ color: '#fa8c16', fontWeight: 700 }}
-            />
-            <div style={{ fontSize: 11, color: '#999', marginTop: 4 }}>
-              输入 {usage?.today?.input_tokens?.toLocaleString()} / 输出 {usage?.today?.output_tokens?.toLocaleString()}
-            </div>
-          </Card>
-        </Col>
-        <Col xs={12} lg={8}>
-          <Card style={{ borderRadius: 12, height: '100%' }}>
-            <Statistic
-              title={<span><FileTextOutlined style={{ marginRight: 4 }} />本月累计</span>}
-              value={usage?.month?.total_cost || 0}
-              suffix="Token"
-              valueStyle={{ color: '#1677ff', fontWeight: 700 }}
-            />
-            <div style={{ fontSize: 11, color: '#999', marginTop: 4 }}>
-              调用 {usage?.month?.call_count} 次
-            </div>
-          </Card>
-        </Col>
-      </Row>
-
-      {/* 微简报 */}
-      <Row gutter={[12, 12]} style={{ marginBottom: 16 }}>
-        <Col xs={8}>
-          <Card size="small" style={{ borderRadius: 8, textAlign: 'center' }}>
-            <div style={{ fontSize: 11, color: '#999' }}>今日调用</div>
-            <div style={{ fontSize: 18, fontWeight: 600 }}>{usage?.today?.call_count || 0}</div>
-          </Card>
-        </Col>
-        <Col xs={8}>
-          <Card size="small" style={{ borderRadius: 8, textAlign: 'center' }}>
-            <div style={{ fontSize: 11, color: '#999' }}>今日输入</div>
-            <div style={{ fontSize: 18, fontWeight: 600 }}>{(usage?.today?.input_tokens || 0).toLocaleString()}</div>
-          </Card>
-        </Col>
-        <Col xs={8}>
-          <Card size="small" style={{ borderRadius: 8, textAlign: 'center' }}>
-            <div style={{ fontSize: 11, color: '#999' }}>今日输出</div>
-            <div style={{ fontSize: 18, fontWeight: 600 }}>{(usage?.today?.output_tokens || 0).toLocaleString()}</div>
-          </Card>
-        </Col>
-      </Row>
-
-      {/* 消耗记录 */}
-      <Card title="📋 我的消耗记录" style={{ borderRadius: 12 }}>
-        <Table
-          dataSource={records}
-          columns={usageColumns}
-          rowKey="id"
-          pagination={false}
-          size="small"
-          locale={{ emptyText: '暂无消耗记录' }}
-        />
-      </Card>
+      <Tabs activeKey={activeTab} onChange={setActiveTab} items={tabItems} />
     </div>
   )
 }
