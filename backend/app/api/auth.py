@@ -178,6 +178,69 @@ def code_login(
     return resp
 
 
+# ---- 忘记密码（邮箱验证码重置）----
+
+@router.post("/forgot-password/send-code")
+def forgot_password_send_code(email: str = Body(..., embed=True), db: Session = Depends(get_db)):
+    """发送密码重置验证码到邮箱（仅已注册用户可用）"""
+    # 检查用户是否存在
+    user = db.query(User).filter(User.email == email).first()
+    if not user:
+        # 不暴露邮箱是否注册
+        return {"message": "验证码已发送（如邮箱已注册）"}
+
+    # 频率限制：每60秒最多发1次，每5分钟最多3次
+    allowed, remaining = check_rate_limit(f"forgot_pwd_send:{email}", max_attempts=3, window_seconds=300)
+    if not allowed:
+        raise HTTPException(
+            status_code=429,
+            detail="验证码发送过于频繁，请5分钟后再试",
+        )
+
+    code = generate_code()
+    save_sms_code(f"forgot_pwd:{email}", code)
+
+    try:
+        send_email_code(email, code)
+        return {"message": f"验证码已发送到 {email}"}
+    except Exception as e:
+        print(f"[Email] 发送失败: {e}")
+        return {"message": "发送失败，请稍后重试"}
+
+
+@router.post("/forgot-password/reset")
+def forgot_password_reset(
+    email: str = Body(...),
+    code: str = Body(...),
+    new_password: str = Body(...),
+    db: Session = Depends(get_db),
+):
+    """验证码验证后重置密码"""
+    if len(new_password) < 6:
+        raise HTTPException(status_code=400, detail="密码至少6位")
+
+    # 频率限制：同一邮箱每5分钟最多尝试10次
+    allowed, remaining = check_rate_limit(f"forgot_pwd_reset:{email}", max_attempts=10, window_seconds=300)
+    if not allowed:
+        raise HTTPException(
+            status_code=429,
+            detail="操作过于频繁，请5分钟后再试",
+        )
+
+    if not verify_sms_code(f"forgot_pwd:{email}", code):
+        record_login_failure(f"forgot_pwd_reset:{email}")
+        raise HTTPException(status_code=401, detail="验证码错误或已过期")
+
+    user = db.query(User).filter(User.email == email).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="用户不存在")
+
+    user.password_hash = hash_password(new_password)
+    db.commit()
+
+    return {"message": "密码重置成功，请使用新密码登录"}
+
+
 # ---- 管理员邮箱验证码登录（唯一方式）----
 
 @router.post("/admin/send-code")

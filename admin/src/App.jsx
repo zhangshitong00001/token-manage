@@ -5,8 +5,7 @@ import {
   DollarOutlined, FileTextOutlined, SettingOutlined,
   LogoutOutlined, WarningOutlined, DownOutlined,
   SafetyOutlined, BarChartOutlined, CloudUploadOutlined,
-  MessageOutlined, CodeOutlined,
-  RobotOutlined, AppstoreOutlined, BuildOutlined,
+  AppstoreOutlined, BuildOutlined,
 } from '@ant-design/icons'
 import { Routes, Route, useNavigate, useLocation } from 'react-router-dom'
 import Login from './pages/Login'
@@ -18,7 +17,6 @@ import PriceConfig from './pages/PriceConfig'
 import UsageLog from './pages/UsageLog'
 import SystemUsage from './pages/SystemUsage'
 import UploadPage from './pages/Upload'
-import Chat from './pages/Chat'
 import ClaudeTerminal from './pages/ClaudeTerminal'
 import DataWorkspace from './pages/DataWorkspace'
 import api from './api'
@@ -37,15 +35,7 @@ const allMenuItems = [
   { key: '/admin/system-usage', icon: <BarChartOutlined />, label: '系统消耗' },
   { key: '/admin/upload', icon: <CloudUploadOutlined />, label: '文件上传' },
   { key: '/admin/workspace', icon: <AppstoreOutlined />, label: '数据工作台' },
-  {
-    key: 'agent',
-    icon: <RobotOutlined />,
-    label: 'Agent',
-    children: [
-      { key: '/admin/chat', icon: <MessageOutlined />, label: 'AI 对话' },
-      { key: '/admin/claude-terminal', icon: <BuildOutlined />, label: 'Claude Code 终端' },
-    ],
-  },
+  { key: '/admin/claude-terminal', icon: <BuildOutlined />, label: 'Claude Code 终端' },
 ]
 
 function getFilteredMenus(isAdmin) {
@@ -252,7 +242,6 @@ function AppLayout() {
             <Route path="/admin/system-usage" element={<SystemUsage />} />
             <Route path="/admin/upload" element={<UploadPage />} />
             <Route path="/admin/workspace" element={<DataWorkspace />} />
-            <Route path="/admin/chat" element={<Chat />} />
             <Route path="/admin/claude-terminal" element={<ClaudeTerminal />} />
             <Route path="*" element={<Dashboard />} />
           </Routes>

@@ -1,9 +1,165 @@
 import React, { useState, useRef, useEffect } from 'react'
-import { Form, Input, Button, Card, message, Typography, Space, Alert, Tabs, Row, Col } from 'antd'
+import { Form, Input, Button, Card, message, Typography, Space, Alert, Tabs, Row, Col, Modal } from 'antd'
 import { MailOutlined, SafetyCertificateOutlined, LockOutlined, UserOutlined, KeyOutlined, WalletOutlined, LineChartOutlined, RocketOutlined, SafetyOutlined, ThunderboltOutlined, MobileOutlined } from '@ant-design/icons'
 import api from '../api'
 
 const { Title, Text, Paragraph } = Typography
+
+// ---- 忘记密码弹窗 ----
+function ForgotPasswordModal({ visible, onClose }) {
+  const [step, setStep] = useState('send') // send | reset | done
+  const [email, setEmail] = useState('')
+  const [code, setCode] = useState('')
+  const [newPassword, setNewPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [codeLoading, setCodeLoading] = useState(false)
+  const [countdown, setCountdown] = useState(0)
+  const timerRef = useRef(null)
+
+  const startCountdown = () => {
+    setCountdown(60)
+    timerRef.current = setInterval(() => {
+      setCountdown((prev) => {
+        if (prev <= 1) { clearInterval(timerRef.current); return 0 }
+        return prev - 1
+      })
+    }, 1000)
+  }
+
+  const handleSendCode = async () => {
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      message.warning('请输入正确的邮箱地址')
+      return
+    }
+    setCodeLoading(true)
+    try {
+      await api.post('/auth/forgot-password/send-code', { email })
+      message.success({ content: `验证码已发送到 ${email}`, duration: 3 })
+      startCountdown()
+    } catch (e) {
+      message.error(e.response?.data?.detail || '发送失败')
+    } finally { setCodeLoading(false) }
+  }
+
+  const handleReset = async () => {
+    if (!code || code.length !== 6) {
+      message.warning('请输入6位验证码')
+      return
+    }
+    if (!newPassword || newPassword.length < 6) {
+      message.warning('密码至少6位')
+      return
+    }
+    if (newPassword !== confirmPassword) {
+      message.warning('两次密码输入不一致')
+      return
+    }
+    setLoading(true)
+    try {
+      await api.post('/auth/forgot-password/reset', { email, code, new_password: newPassword })
+      message.success({ content: '✅ 密码重置成功，请使用新密码登录', duration: 3 })
+      setStep('done')
+    } catch (e) {
+      message.error(e.response?.data?.detail || '重置失败')
+    } finally { setLoading(false) }
+  }
+
+  const handleClose = () => {
+    if (timerRef.current) clearInterval(timerRef.current)
+    setEmail('')
+    setCode('')
+    setNewPassword('')
+    setConfirmPassword('')
+    setCountdown(0)
+    setStep('send')
+    onClose()
+  }
+
+  return (
+    <Modal
+      title="🔑 忘记密码"
+      open={visible}
+      onCancel={handleClose}
+      footer={null}
+      destroyOnClose
+      width={420}
+      centered
+    >
+      {step === 'send' && (
+        <Form layout="vertical" size="large">
+          <Form.Item label="邮箱" required>
+            <Input
+              prefix={<MailOutlined style={{ color: '#bfbfbf' }} />}
+              placeholder="请输入注册时使用的邮箱"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              style={{ borderRadius: 8, height: 44 }}
+            />
+          </Form.Item>
+          <Form.Item label="邮箱验证码" required>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <Input
+                prefix={<SafetyCertificateOutlined style={{ color: '#bfbfbf' }} />}
+                placeholder="6位验证码" maxLength={6}
+                value={code}
+                onChange={(e) => setCode(e.target.value)}
+                style={{ borderRadius: 8, height: 44, flex: 1 }}
+              />
+              <Button onClick={handleSendCode} disabled={countdown > 0}
+                loading={codeLoading}
+                style={{ borderRadius: 8, height: 44, minWidth: 110,
+                  background: countdown > 0 ? '#f5f5f5' : 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                  border: 'none', color: countdown > 0 ? '#999' : '#fff', fontWeight: 500 }}
+              >
+                {countdown > 0 ? `${countdown}s` : '获取验证码'}
+              </Button>
+            </div>
+          </Form.Item>
+          <Form.Item label="新密码" required>
+            <Input.Password
+              prefix={<LockOutlined style={{ color: '#bfbfbf' }} />}
+              placeholder="请输入新密码（至少6位）"
+              value={newPassword}
+              onChange={(e) => setNewPassword(e.target.value)}
+              style={{ borderRadius: 8, height: 44 }}
+            />
+          </Form.Item>
+          <Form.Item label="确认密码" required>
+            <Input.Password
+              prefix={<LockOutlined style={{ color: '#bfbfbf' }} />}
+              placeholder="请再次输入新密码"
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+              style={{ borderRadius: 8, height: 44 }}
+            />
+          </Form.Item>
+          <Button type="primary" block loading={loading} onClick={handleReset}
+            style={{ height: 44, borderRadius: 8,
+              background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+              border: 'none', fontSize: 15, fontWeight: 500,
+              boxShadow: '0 4px 12px rgba(102,126,234,0.4)' }}
+          >重置密码</Button>
+        </Form>
+      )}
+
+      {step === 'done' && (
+        <div style={{ textAlign: 'center', padding: '24px 0' }}>
+          <div style={{ fontSize: 48, marginBottom: 16 }}>✅</div>
+          <Title level={4} style={{ margin: 0 }}>密码已重置</Title>
+          <Paragraph type="secondary" style={{ marginTop: 8 }}>
+            请使用新密码登录后台
+          </Paragraph>
+          <Button type="primary" onClick={handleClose}
+            style={{ height: 44, borderRadius: 8, marginTop: 16,
+              background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+              border: 'none', fontSize: 15, fontWeight: 500 }}
+          >返回登录</Button>
+        </div>
+      )}
+    </Modal>
+  )
+}
 
 const features = [
   { icon: <WalletOutlined style={{ fontSize: 24, color: '#1677ff' }} />, title: '智能充值', desc: '支持微信/支付宝充值，多种套餐灵活选择' },
@@ -117,7 +273,7 @@ function AdminLoginForm({ onSuccess }) {
   )
 }
 
-function UserLoginForm({ onSuccess, defaultEmail }) {
+function UserLoginForm({ onSuccess, defaultEmail, onOpenForgotPassword }) {
   const [loading, setLoading] = useState(false)
   const [form] = Form.useForm()
 
@@ -157,6 +313,11 @@ function UserLoginForm({ onSuccess, defaultEmail }) {
           placeholder="请输入密码" style={{ borderRadius: 8, height: 44 }}
         />
       </Form.Item>
+      <div style={{ textAlign: 'right', marginTop: -12, marginBottom: 12 }}>
+        <Button type="link" style={{ padding: 0, fontSize: 13, color: '#667eea' }}
+          onClick={onOpenForgotPassword}
+        >忘记密码？</Button>
+      </div>
       <Form.Item style={{ marginBottom: 12 }}>
         <Button type="primary" htmlType="submit" block loading={loading}
           style={{ height: 44, borderRadius: 8,
@@ -276,6 +437,7 @@ function UserRegisterForm({ onRegistered }) {
 export default function Login({ onLogin }) {
   const [activeTab, setActiveTab] = useState('user')
   const [registeredEmail, setRegisteredEmail] = useState('')
+  const [forgotPwdVisible, setForgotPwdVisible] = useState(false)
 
   const handleRegistered = (email) => {
     setRegisteredEmail(email)
@@ -374,7 +536,8 @@ export default function Login({ onLogin }) {
               {
                 key: 'user',
                 label: '用户登录',
-                children: <UserLoginForm onSuccess={onLogin} defaultEmail={registeredEmail} />,
+                children: <UserLoginForm onSuccess={onLogin} defaultEmail={registeredEmail}
+                  onOpenForgotPassword={() => setForgotPwdVisible(true)} />,
               },
               {
                 key: 'register',
@@ -402,6 +565,8 @@ export default function Login({ onLogin }) {
           />
         </Card>
       </div>
+
+      <ForgotPasswordModal visible={forgotPwdVisible} onClose={() => setForgotPwdVisible(false)} />
     </div>
   )
 }

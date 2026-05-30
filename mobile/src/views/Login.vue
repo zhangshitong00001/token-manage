@@ -44,6 +44,12 @@
               登录
             </van-button>
           </div>
+          <!-- 忘记密码 -->
+          <div style="text-align: center; margin: 0 16px 16px;">
+            <span style="color: rgba(255,255,255,0.8); font-size: 13px; cursor: pointer;"
+              @click="showForgotPwd = true"
+            >忘记密码？</span>
+          </div>
         </van-form>
       </van-tab>
 
@@ -101,6 +107,61 @@
         </van-form>
       </van-tab>
     </van-tabs>
+
+    <!-- 忘记密码弹窗 -->
+    <van-dialog v-model:show="showForgotPwd" title="🔑 忘记密码" show-cancel-button
+      :before-close="onForgotPwdBeforeClose"
+      style="border-radius: 12px;"
+    >
+      <div style="padding: 16px 20px;">
+        <van-form @submit="onForgotPwdReset" ref="forgotFormRef">
+          <van-field
+            v-model="fpEmail"
+            label="邮箱"
+            placeholder="请输入注册时使用的邮箱"
+            :rules="[{ required: true, message: '请输入邮箱' }, { pattern: /@/, message: '邮箱格式不正确' }]"
+          >
+            <template #button>
+              <van-button size="small" type="primary"
+                :disabled="fpCountdown > 0 || !fpEmail.includes('@')"
+                :loading="fpSendingCode"
+                @click="onForgotPwdSendCode"
+              >{{ fpCodeText }}</van-button>
+            </template>
+          </van-field>
+          <van-field
+            v-model="fpCode"
+            type="text"
+            label="验证码"
+            placeholder="6位验证码"
+            maxlength="6"
+            :rules="[{ required: true, message: '请输入验证码' }]"
+          />
+          <van-field
+            v-model="fpNewPassword"
+            type="password"
+            label="新密码"
+            placeholder="至少6位"
+            :rules="[{ required: true, message: '请输入新密码' }, { pattern: /^.{6,}$/, message: '密码至少6位' }]"
+          />
+          <van-field
+            v-model="fpConfirmPassword"
+            type="password"
+            label="确认密码"
+            placeholder="请再次输入新密码"
+            :rules="[
+              { required: true, message: '请确认密码' },
+              { validator: (val) => val === fpNewPassword, message: '两次密码不一致' }
+            ]"
+          />
+          <div style="margin: 16px 0 8px;">
+            <van-button round block type="primary" native-type="submit" :loading="fpLoading"
+              style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border: none;"
+            >重置密码</van-button>
+          </div>
+        </van-form>
+      </div>
+    </van-dialog>
   </div>
 </template>
 
@@ -129,6 +190,69 @@ const regSendingCode = ref(false)
 const regCountdown = ref(0)
 
 const activeTab = ref('login')
+
+// 忘记密码
+const showForgotPwd = ref(false)
+const fpEmail = ref('')
+const fpCode = ref('')
+const fpNewPassword = ref('')
+const fpConfirmPassword = ref('')
+const fpLoading = ref(false)
+const fpSendingCode = ref(false)
+const fpCountdown = ref(0)
+let fpTimer = null
+
+const fpCodeText = computed(() => {
+  if (fpSendingCode.value) return '发送中...'
+  if (fpCountdown.value > 0) return `${fpCountdown.value}s`
+  return '获取验证码'
+})
+
+async function onForgotPwdSendCode() {
+  if (fpSendingCode.value || fpCountdown.value > 0) return
+  if (!fpEmail.value.includes('@')) { showToast('请输入正确的邮箱'); return }
+  fpSendingCode.value = true
+  try {
+    await api.post('/auth/forgot-password/send-code', { email: fpEmail.value })
+    showToast('验证码已发送')
+    fpCountdown.value = 60
+    fpTimer = setInterval(() => {
+      fpCountdown.value--
+      if (fpCountdown.value <= 0) { clearInterval(fpTimer); fpTimer = null }
+    }, 1000)
+  } catch (e) {
+    showToast(e.response?.data?.detail || '发送失败')
+  } finally { fpSendingCode.value = false }
+}
+
+async function onForgotPwdReset() {
+  if (fpNewPassword.value !== fpConfirmPassword.value) {
+    showToast('两次密码不一致')
+    return
+  }
+  fpLoading.value = true
+  try {
+    await api.post('/auth/forgot-password/reset', {
+      email: fpEmail.value,
+      code: fpCode.value,
+      new_password: fpNewPassword.value,
+    })
+    showToast('✅ 密码重置成功')
+    showForgotPwd.value = false
+  } catch (e) {
+    showToast(e.response?.data?.detail || '重置失败')
+  } finally { fpLoading.value = false }
+}
+
+function onForgotPwdBeforeClose(action) {
+  if (fpTimer) { clearInterval(fpTimer); fpTimer = null }
+  fpEmail.value = ''
+  fpCode.value = ''
+  fpNewPassword.value = ''
+  fpConfirmPassword.value = ''
+  fpCountdown.value = 0
+  return true
+}
 
 // 登录验证码
 const canSendCode = computed(() => countdown.value <= 0 && email.value.includes('@'))
@@ -224,6 +348,7 @@ async function onRegister() {
 onUnmounted(() => {
   if (loginTimer) clearInterval(loginTimer)
   if (regTimer) clearInterval(regTimer)
+  if (fpTimer) clearInterval(fpTimer)
 })
 </script>
 
