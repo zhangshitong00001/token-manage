@@ -109,6 +109,76 @@ def update_user(
     return {"message": "更新成功"}
 
 
+@router.post("/users/{user_id}/add-tokens")
+def admin_add_tokens(
+    user_id: int,
+    data: dict,
+    admin: User = Depends(get_admin_user),
+    db: Session = Depends(get_db),
+):
+    """为指定用户增加 Token 额度（充值操作）"""
+    amount = data.get("amount", 0)
+    remark = data.get("remark", "")
+    if amount <= 0:
+        raise HTTPException(status_code=400, detail="amount 必须大于0")
+    
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="用户不存在")
+    
+    from app.core.token_quota import add_tokens_from_recharge
+    result = add_tokens_from_recharge(
+        user_id=user_id,
+        amount_yuan=amount,
+        db=db,
+        remark=remark,
+    )
+    return {
+        "message": f"已为用户 {user.nickname or user.email or user_id} 增加 {result['added_tokens']} Token",
+        "added_tokens": result["added_tokens"],
+        "balance_before": result["balance_before"],
+        "balance_after": result["balance_after"],
+    }
+
+
+@router.get("/users/{user_id}/quota-usage")
+def admin_user_quota_usage(
+    user_id: int,
+    days: int = Query(30, ge=1, le=365),
+    admin: User = Depends(get_admin_user),
+    db: Session = Depends(get_db),
+):
+    """查询指定用户的 Token 消耗记录"""
+    from datetime import timedelta
+    cutoff = datetime.now() - timedelta(days=days)
+    records = db.query(TokenUsage).filter(
+        TokenUsage.user_id == user_id,
+        TokenUsage.usage_time >= cutoff,
+    ).order_by(TokenUsage.usage_time.desc()).limit(200).all()
+    
+    user = db.query(User).filter(User.id == user_id).first()
+    total_deducted = sum(r.total_cost for r in records)
+    
+    return {
+        "user_id": user_id,
+        "user_nickname": user.nickname if user else "",
+        "user_email": user.email if user else "",
+        "balance": user.token_balance if user else 0,
+        "total_records": len(records),
+        "total_deducted_tokens": total_deducted,
+        "records": [
+            {
+                "time": r.usage_time.isoformat() if r.usage_time else "",
+                "agent": r.agent_name,
+                "input_tokens": r.input_tokens,
+                "output_tokens": r.output_tokens,
+                "deducted_tokens": r.total_cost,
+            }
+            for r in records
+        ],
+    }
+
+
 # ---- 套餐管理 ----
 @router.get("/packages")
 def list_packages(admin: User = Depends(get_admin_user), db: Session = Depends(get_db)):

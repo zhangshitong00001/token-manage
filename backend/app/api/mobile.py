@@ -113,13 +113,25 @@ def create_deepseek_payment(
 def capture_deepseek_payment(
     data: dict,
     current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
 ):
-    """确认支付完成（用户扫码付款后调用）"""
+    """确认支付完成（用户扫码付款后调用），成功后自动增加 token_balance"""
     payment_id = data.get("payment_id")
     if not payment_id:
         raise HTTPException(status_code=400, detail="缺少 payment_id")
     try:
         result = _ds_pay.capture_payment(payment_id)
+        # 支付成功 → 按金额增加用户 token_balance
+        if result.get("status") == "PAID":
+            amount_yuan = data.get("amount", 10)
+            from app.core.token_quota import add_tokens_from_recharge
+            quota = add_tokens_from_recharge(
+                user_id=current_user.id,
+                amount_yuan=float(amount_yuan),
+                db=db,
+                remark=f"deepseek_capture:{payment_id}",
+            )
+            result["token_balance"] = quota
         return {"success": True, "data": result}
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"确认支付失败: {str(e)}")

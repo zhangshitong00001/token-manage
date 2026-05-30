@@ -3,6 +3,7 @@
 import asyncio
 import io
 import json
+import logging
 import os
 import re
 import shutil
@@ -17,7 +18,10 @@ from pydantic import BaseModel
 
 from app.core.deps import get_current_user
 from app.core.redis_client import get_redis
+from app.core.token_quota import check_balance, deduct_balance
 from app.models.chat_history import save_chat_message, load_chat_history, save_conversation
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/chat", tags=["AI聊天"])
 
@@ -183,6 +187,18 @@ async def chat_stream(
     async def event_stream():
         start_time = time.time()
         prompt = build_prompt(req.message, req.history, req.files)
+
+        # ── 余额检查 ──
+        from app.database import SessionLocal
+        check_db = SessionLocal()
+        try:
+            sufficient, balance = check_balance(user.id, check_db, min_tokens=1)
+            if not sufficient:
+                yield f"data: {json.dumps({'type': 'error', 'message': f'Token 余额不足（当前余额: {balance}），请先充值'})}\n\n"
+                return
+        finally:
+            check_db.close()
+
         yield f"data: {json.dumps({'type': 'start'})}\n\n"
 
         collected_text = ""
@@ -351,6 +367,26 @@ async def chat_stream(
                     except Exception:
                         pass
 
+                    # ── 扣减 Token 余额 ──
+                    usage_input = data.get('usage', {}).get('input_tokens', 0)
+                    usage_output = data.get('usage', {}).get('output_tokens', 0)
+                    deduct_db = SessionLocal()
+                    try:
+                        result = deduct_balance(
+                            user_id=user_id_val,
+                            input_tokens=usage_input,
+                            output_tokens=usage_output,
+                            db=deduct_db,
+                            agent_name="chat",
+                            request_id=f"chat_{user_id_val}_{int(start_time)}",
+                        )
+                        deduct_info = result
+                    except Exception as deduct_err:
+                        logger.error(f"[Quota] 扣减失败: {deduct_err}")
+                        deduct_info = {"success": False, "error": str(deduct_err)}
+                    finally:
+                        deduct_db.close()
+
                     elapsed = time.time() - start_time
                     yield f"data: {json.dumps({
                         'type': 'done',
@@ -358,9 +394,11 @@ async def chat_stream(
                         'changed_files': changed_files,
                         'output_files': output_files,
                         'cost': data.get('total_cost_usd', 0),
-                        'tokens_input': data.get('usage', {}).get('input_tokens', 0),
-                        'tokens_output': data.get('usage', {}).get('output_tokens', 0),
+                        'tokens_input': usage_input,
+                        'tokens_output': usage_output,
                         'duration_ms': int(elapsed * 1000),
+                        'quota_deducted': deduct_info.get('internal_tokens', 0),
+                        'balance_after': deduct_info.get('balance_after', 0),
                     })}\n\n"
                     error_occurred = True
                     return

@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import logging
 import os
 import time
 from pathlib import Path
@@ -10,7 +11,10 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse, FileResponse
 
 from app.core.deps import get_current_user
+from app.core.token_quota import check_balance, deduct_balance
 from app.models.user import User
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/workspace", tags=["数据工作台"])
 
@@ -114,6 +118,18 @@ async def workspace_process(
     async def event_stream():
         start_time = time.time()
         prompt = build_workspace_prompt(file_list, description)
+
+        # ── 余额检查 ──
+        from app.database import SessionLocal
+        check_db = SessionLocal()
+        try:
+            sufficient, balance = check_balance(user.id, check_db, min_tokens=1)
+            if not sufficient:
+                yield f"data: {json.dumps({'type': 'error', 'message': f'Token 余额不足（当前余额: {balance}），请先充值'})}\n\n"
+                return
+        finally:
+            check_db.close()
+
         yield f"data: {json.dumps({'type': 'start', 'message': 'AI 数据处理引擎已启动...'})}\n\n"
 
         collected_text = ""
@@ -205,6 +221,26 @@ async def workspace_process(
                     output_files.append(f.name)
 
         yield f"data: {json.dumps({'type': 'done', 'content': collected_text, 'output_files': output_files, 'duration_ms': int((time.time() - start_time) * 1000)})}\n\n"
+
+        # ── 扣减 Token 余额（按字数估算）──
+        if collected_text:
+            # 粗略估算：输入 prompt 和输出文本的 token 数
+            est_input = len(prompt) // 3
+            est_output = len(collected_text) // 3
+            deduct_db = SessionLocal()
+            try:
+                result = deduct_balance(
+                    user_id=user.id,
+                    input_tokens=est_input,
+                    output_tokens=est_output,
+                    db=deduct_db,
+                    agent_name="workspace",
+                    request_id=f"ws_{user.id}_{int(start_time)}",
+                )
+            except Exception as deduct_err:
+                logger.error(f"[Quota] Workspace 扣减失败: {deduct_err}")
+            finally:
+                deduct_db.close()
 
     return StreamingResponse(
         event_stream(),
