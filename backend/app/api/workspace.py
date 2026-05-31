@@ -156,27 +156,19 @@ async def workspace_process(
                 "--output-format", "stream-json",
                 "--verbose",
                 stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.DEVNULL,
                 stdin=asyncio.subprocess.DEVNULL,
                 env=CLAUDE_ENV,
                 cwd=WORK_DIR,
             )
 
-            async def drain_stderr(stderr):
-                while True:
-                    line = await stderr.readline()
-                    if not line:
-                        break
-
-            stderr_task = asyncio.create_task(drain_stderr(proc.stderr))
-
             while True:
                 elapsed = time.time() - start_time
                 if elapsed > 290:
                     proc.kill()
-                    stderr_task.cancel()
-                    yield f"data: {json.dumps({'type': 'error', 'message': '处理超时（5分钟）'})}\n\n"
+                    yield f"data: {json.dumps({'type': 'error', 'message': '处理超时（5分钟）'})}\\n\\n"
                     error_occurred = True
+                    await proc.wait()
                     return
 
                 raw_line = await asyncio.wait_for(proc.stdout.readline(), timeout=120.0)
@@ -215,9 +207,9 @@ async def workspace_process(
                     content = _extract_text(data.get("content", ""))
                     if content:
                         for piece in _split_chunks(content[:500]):
-                            yield f"data: {json.dumps({'type': 'result', 'content': piece})}\n\n"
+                            yield f"data: {json.dumps({'type': 'result', 'content': piece})}\\n\\n"
 
-            stderr_task.cancel()
+            await proc.wait()
 
         except asyncio.TimeoutError:
             error_occurred = True
