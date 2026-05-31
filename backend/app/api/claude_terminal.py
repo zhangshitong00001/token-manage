@@ -61,9 +61,10 @@ class SessionInfo(BaseModel):
 class ClaudeTerminalSession:
     """管理一个 claude 子进程的 PTY 会话"""
 
-    def __init__(self, session_id: str, config: SessionConfig):
+    def __init__(self, session_id: str, config: SessionConfig, user_id: int = 0):
         self.session_id = session_id
         self.config = config
+        self.user_id = user_id
         self.status = "stopped"
         self.started_at = 0
         self.process = None
@@ -71,6 +72,7 @@ class ClaudeTerminalSession:
         self._read_task = None
         self._ws_clients: list[WebSocket] = []
         self._buffer = b""
+        self._user_input_text = ""  # 累积用户输入文本
 
     @property
     def info(self) -> dict:
@@ -144,6 +146,7 @@ class ClaudeTerminalSession:
         if initial_prompt:
             actual_cmd.append("-p")
             actual_cmd.append(initial_prompt)
+            self._user_input_text += initial_prompt
 
         self.process = await asyncio.create_subprocess_exec(
             *actual_cmd,
@@ -223,6 +226,8 @@ class ClaudeTerminalSession:
             pass
         finally:
             self.status = "stopped"
+            # 进程自然退出时也扣减（不经过 stop() 的情况）
+            self._deduct_usage()
             # 通知所有客户端
             for ws in list(self._ws_clients):
                 try:
@@ -249,6 +254,7 @@ class ClaudeTerminalSession:
 
     def write_input(self, text: str):
         """向 PTY 写入输入"""
+        self._user_input_text += text
         if self.master_fd is not None:
             os.write(self.master_fd, text.encode("utf-8"))
 
@@ -266,8 +272,39 @@ class ClaudeTerminalSession:
             except ProcessLookupError:
                 pass
 
+    def _deduct_usage(self):
+        """扣减本次会话消耗的 Token"""
+        if not self.user_id or not self.started_at:
+            return
+        # 防止重复扣减
+        if hasattr(self, '_deducted') and self._deducted:
+            return
+        self._deducted = True
+
+        output_text = self._buffer.decode("utf-8", errors="replace")
+        from app.core.token_counter import count_tokens
+        from app.database import SessionLocal
+        from app.core.token_quota import deduct_balance
+        est_input = count_tokens(self._user_input_text)
+        est_output = count_tokens(output_text[:500000])
+        deduct_db = SessionLocal()
+        try:
+            deduct_balance(
+                user_id=self.user_id,
+                input_tokens=est_input,
+                output_tokens=est_output,
+                db=deduct_db,
+                agent_name="claude-terminal",
+                request_id=f"ct_{self.user_id}_{int(self.started_at)}",
+            )
+            print(f"[ClaudeTerminal] 扣减 user={self.user_id} in={est_input} out={est_output}")
+        except Exception as e:
+            print(f"[ClaudeTerminal] 扣减失败: {e}")
+        finally:
+            deduct_db.close()
+
     async def stop(self):
-        """停止会话"""
+        """停止会话并扣减 Token"""
         if self._read_task:
             self._read_task.cancel()
             self._read_task = None
@@ -285,6 +322,7 @@ class ClaudeTerminalSession:
                 pass
             self.process = None
         self.status = "stopped"
+        self._deduct_usage()
 
     def add_ws_client(self, ws: WebSocket):
         self._ws_clients.append(ws)
@@ -304,7 +342,7 @@ async def start_session(
 ):
     """启动一个新的 Claude Code 会话"""
     session_id = f"claude-{uuid.uuid4().hex[:12]}"
-    session = ClaudeTerminalSession(session_id, config)
+    session = ClaudeTerminalSession(session_id, config, user_id=user.id)
     _sessions[session_id] = session
     result = await session.start(initial_prompt)
     return {"session_id": session_id, **result}
