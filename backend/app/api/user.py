@@ -3,6 +3,7 @@ import os
 import subprocess
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
+from typing import Optional
 
 from app.database import get_db
 from app.models import User
@@ -72,6 +73,45 @@ def get_my_usage(
             "total_cost": int(month_records[2]),
             "call_count": int(month_records[3]),
         },
+    }
+
+
+@router.get("/my-usage-list")
+def get_my_usage_list(
+    page: int = 1,
+    page_size: int = 20,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """获取当前用户自己的消耗记录（带分页和日期筛选）"""
+    from app.models import TokenUsage
+
+    query = db.query(TokenUsage).filter(TokenUsage.user_id == current_user.id)
+    if start_date:
+        query = query.filter(TokenUsage.usage_time >= start_date)
+    if end_date:
+        query = query.filter(TokenUsage.usage_time <= f"{end_date} 23:59:59")
+    total = query.count()
+    items = query.order_by(TokenUsage.usage_time.desc()).offset((page - 1) * page_size).limit(page_size).all()
+    return {
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+        "items": [
+            {
+                "id": r.id,
+                "user_id": r.user_id,
+                "agent_name": r.agent_name,
+                "input_tokens": r.input_tokens,
+                "output_tokens": r.output_tokens,
+                "total_cost": r.total_cost,
+                "request_id": r.request_id,
+                "usage_time": r.usage_time.isoformat() if r.usage_time else "",
+            }
+            for r in items
+        ],
     }
 
 

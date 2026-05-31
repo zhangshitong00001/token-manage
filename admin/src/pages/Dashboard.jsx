@@ -30,7 +30,7 @@ function UserDashboard() {
     Promise.all([
       api.get('/user/my-usage'),
       api.get('/user/profile'),
-      api.get('/admin/usage/list?page_size=10'),
+      api.get('/user/my-usage-list?page_size=10'),
       api.get('/user/my-conversations?page=1&page_size=20'),
     ]).then(([u, p, r, c]) => {
       setUsage(u)
