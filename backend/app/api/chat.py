@@ -259,21 +259,19 @@ async def chat_stream(
                 "--output-format", "stream-json",
                 "--verbose",
                 stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.DEVNULL,
                 stdin=asyncio.subprocess.DEVNULL,
                 env=CLAUDE_ENV,
                 cwd=WORK_DIR,
             )
 
-            stderr_task = asyncio.create_task(_drain_stderr(proc.stderr))
-
             while True:
                 elapsed = time.time() - start_time
                 if elapsed > 175:
                     proc.kill()
-                    stderr_task.cancel()
-                    yield f"data: {json.dumps({'type': 'error', 'message': '请求超时（180秒）'})}\n\n"
+                    yield f"data: {json.dumps({'type': 'error', 'message': '请求超时（180秒）'})}\\n\\n"
                     error_occurred = True
+                    await proc.wait()
                     return
 
                 raw_line = await asyncio.wait_for(proc.stdout.readline(), timeout=60.0)
@@ -444,12 +442,11 @@ async def chat_stream(
                     error_occurred = True
                     return
 
-            stderr_task.cancel()
             await proc.wait()
 
         except asyncio.TimeoutError:
             proc.kill()
-            stderr_task.cancel()
+            await proc.wait()
             yield f"data: {json.dumps({'type': 'error', 'message': 'Claude 响应超时，请重试'})}\n\n"
             error_occurred = True
             # 保存已有部分到历史
@@ -505,10 +502,13 @@ async def chat_stream(
             # ── 扣减 Token 余额（Claude bare 模式不发送 result 事件）──
             deduct_db = SessionLocal()
             try:
+                # 按文本长度估算 token 数
+                est_input = len(prompt) // 3
+                est_output = len(collected_text) // 3
                 result = deduct_balance(
                     user_id=user_id_val,
-                    input_tokens=0,
-                    output_tokens=0,
+                    input_tokens=est_input,
+                    output_tokens=est_output,
                     db=deduct_db,
                     agent_name="chat",
                     request_id=f"chat_{user_id_val}_{int(start_time)}",
@@ -519,7 +519,7 @@ async def chat_stream(
                 deduct_info = {"success": False, "error": str(deduct_err)}
             finally:
                 deduct_db.close()
-            yield f"data: {json.dumps({'type': 'done', 'content': collected_text, 'changed_files': changed_files, 'output_files': output_files, 'cost': 0, 'tokens_input': 0, 'tokens_output': 0, 'duration_ms': int(elapsed * 1000), 'quota_deducted': deduct_info.get('internal_tokens', 0), 'balance_after': deduct_info.get('balance_after', 0)})}\\n\\n"
+            yield f"data: {json.dumps({'type': 'done', 'content': collected_text, 'changed_files': changed_files, 'output_files': output_files, 'cost': 0, 'tokens_input': est_input, 'tokens_output': est_output, 'duration_ms': int(elapsed * 1000), 'quota_deducted': deduct_info.get('internal_tokens', 0), 'balance_after': deduct_info.get('balance_after', 0)})}\\n\\n"
 
     return StreamingResponse(
         event_stream(),
