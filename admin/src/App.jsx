@@ -7,7 +7,15 @@ import {
   SafetyOutlined, BarChartOutlined, CloudUploadOutlined,
   AppstoreOutlined, BuildOutlined,
 } from '@ant-design/icons'
-import { Routes, Route, useNavigate, useLocation } from 'react-router-dom'
+import { Routes, Route, useNavigate, useLocation, Navigate } from 'react-router-dom'
+
+// 管理员专属路由包装
+const AdminRoute = ({ children }) => {
+  const userStr = localStorage.getItem('admin_user')
+  const user = userStr ? JSON.parse(userStr) : null
+  if (user?.role !== 'admin') return <Navigate to="/dashboard" replace />
+  return children
+}
 import Landing from './pages/Landing'
 import Login from './pages/Login'
 import Register from './pages/Register'
@@ -34,7 +42,7 @@ const allMenuItems = [
   { key: '/packages', icon: <DollarOutlined />, label: '套餐管理', adminOnly: true },
   { key: '/price', icon: <SettingOutlined />, label: '价格配置', adminOnly: true },
   { key: '/usage', icon: <FileTextOutlined />, label: '消耗记录' },
-  { key: '/system-usage', icon: <BarChartOutlined />, label: '系统消耗' },
+  { key: '/system-usage', icon: <BarChartOutlined />, label: '系统消耗', adminOnly: true },
   { key: '/upload', icon: <CloudUploadOutlined />, label: '文件上传' },
   { key: '/workspace', icon: <AppstoreOutlined />, label: '数据工作台' },
   { key: '/claude-terminal', icon: <BuildOutlined />, label: 'Claude Code 终端' },
@@ -251,7 +259,7 @@ function AppLayout() {
             <Route path="/packages" element={<Packages />} />
             <Route path="/price" element={<PriceConfig />} />
             <Route path="/usage" element={<UsageLog />} />
-            <Route path="/system-usage" element={<SystemUsage />} />
+            <Route path="/system-usage" element={<AdminRoute><SystemUsage /></AdminRoute>} />
             <Route path="/upload" element={<UploadPage />} />
             <Route path="/workspace" element={<DataWorkspace />} />
             <Route path="/claude-terminal" element={<ClaudeTerminal />} />
