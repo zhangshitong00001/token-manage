@@ -502,7 +502,24 @@ async def chat_stream(
                     if f.is_file() and f.stat().st_mtime > start_time:
                         output_files.append(f.name)
             elapsed = time.time() - start_time
-            yield f"data: {json.dumps({'type': 'done', 'content': collected_text, 'changed_files': changed_files, 'output_files': output_files, 'cost': 0, 'tokens_input': 0, 'tokens_output': 0, 'duration_ms': int(elapsed * 1000)})}\n\n"
+            # ── 扣减 Token 余额（Claude bare 模式不发送 result 事件）──
+            deduct_db = SessionLocal()
+            try:
+                result = deduct_balance(
+                    user_id=user_id_val,
+                    input_tokens=0,
+                    output_tokens=0,
+                    db=deduct_db,
+                    agent_name="chat",
+                    request_id=f"chat_{user_id_val}_{int(start_time)}",
+                )
+                deduct_info = result
+            except Exception as deduct_err:
+                logger.error(f"[Quota] 扣减失败: {deduct_err}")
+                deduct_info = {"success": False, "error": str(deduct_err)}
+            finally:
+                deduct_db.close()
+            yield f"data: {json.dumps({'type': 'done', 'content': collected_text, 'changed_files': changed_files, 'output_files': output_files, 'cost': 0, 'tokens_input': 0, 'tokens_output': 0, 'duration_ms': int(elapsed * 1000), 'quota_deducted': deduct_info.get('internal_tokens', 0), 'balance_after': deduct_info.get('balance_after', 0)})}\\n\\n"
 
     return StreamingResponse(
         event_stream(),
