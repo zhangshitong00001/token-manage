@@ -235,11 +235,11 @@ async def workspace_process(
             except Exception:
                 pass
 
-        # ── 扣减 Token 余额（按字数估算）──
+        # ── 扣减 Token 余额（按真实 token 数）──
         if collected_text:
-            # 粗略估算：输入 prompt 和输出文本的 token 数
-            est_input = len(prompt) // 3
-            est_output = len(collected_text) // 3
+            from app.core.token_counter import count_tokens
+            est_input = count_tokens(prompt)
+            est_output = count_tokens(collected_text)
             deduct_db = SessionLocal()
             try:
                 result = deduct_balance(

@@ -502,9 +502,9 @@ async def chat_stream(
             # ── 扣减 Token 余额（Claude bare 模式不发送 result 事件）──
             deduct_db = SessionLocal()
             try:
-                # 按文本长度估算 token 数
-                est_input = len(prompt) // 3
-                est_output = len(collected_text) // 3
+                from app.core.token_counter import count_tokens
+                est_input = count_tokens(prompt)
+                est_output = count_tokens(collected_text)
                 result = deduct_balance(
                     user_id=user_id_val,
                     input_tokens=est_input,
