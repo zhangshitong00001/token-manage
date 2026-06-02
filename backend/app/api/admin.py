@@ -189,7 +189,7 @@ def list_packages(admin: User = Depends(get_admin_user), db: Session = Depends(g
 @router.post("/packages")
 def create_package(data: PackageOut, admin: User = Depends(get_admin_user), db: Session = Depends(get_db)):
     """新增套餐"""
-    pkg = TokenPackage(**data.dict())
+    pkg = TokenPackage(**data.model_dump())
     db.add(pkg)
     db.commit()
     return {"message": "创建成功"}
@@ -206,7 +206,7 @@ def update_package(
     pkg = db.query(TokenPackage).filter(TokenPackage.id == package_id).first()
     if not pkg:
         raise HTTPException(status_code=404, detail="套餐不存在")
-    update_data = data.dict(exclude_none=True)
+    update_data = data.model_dump(exclude_none=True)
     for key, val in update_data.items():
         setattr(pkg, key, val)
     db.commit()

@@ -275,33 +275,39 @@ class ClaudeTerminalSession:
     def _deduct_usage(self):
         """扣减本次会话消耗的 Token"""
         if not self.user_id or not self.started_at:
+            print(f"[ClaudeTerminal] 跳过扣减: user_id={self.user_id}, started_at={self.started_at}")
             return
         # 防止重复扣减
         if hasattr(self, '_deducted') and self._deducted:
+            print(f"[ClaudeTerminal] 跳过重复扣减: user={self.user_id}")
             return
         self._deducted = True
 
         output_text = self._buffer.decode("utf-8", errors="replace")
-        from app.core.token_counter import count_tokens
-        from app.database import SessionLocal
-        from app.core.token_quota import deduct_balance
-        est_input = count_tokens(self._user_input_text)
-        est_output = count_tokens(output_text[:500000])
-        deduct_db = SessionLocal()
+        print(f"[ClaudeTerminal] 开始扣减: user={self.user_id}, input_len={len(self._user_input_text)}, output_len={len(self._buffer)}")
         try:
-            deduct_balance(
-                user_id=self.user_id,
-                input_tokens=est_input,
-                output_tokens=est_output,
-                db=deduct_db,
-                agent_name="claude-terminal",
-                request_id=f"ct_{self.user_id}_{int(self.started_at)}",
-            )
-            print(f"[ClaudeTerminal] 扣减 user={self.user_id} in={est_input} out={est_output}")
-        except Exception as e:
-            print(f"[ClaudeTerminal] 扣减失败: {e}")
-        finally:
-            deduct_db.close()
+            from app.core.token_counter import count_tokens
+            from app.database import SessionLocal
+            from app.core.token_quota import deduct_balance
+            est_input = count_tokens(self._user_input_text)
+            est_output = count_tokens(output_text[:500000])
+            deduct_db = SessionLocal()
+            try:
+                deduct_balance(
+                    user_id=self.user_id,
+                    input_tokens=est_input,
+                    output_tokens=est_output,
+                    db=deduct_db,
+                    agent_name="claude-terminal",
+                    request_id=f"ct_{self.user_id}_{int(self.started_at)}",
+                )
+                print(f"[ClaudeTerminal] 扣减 user={self.user_id} in={est_input} out={est_output}")
+            except Exception as e:
+                print(f"[ClaudeTerminal] 扣减失败: {e}")
+            finally:
+                deduct_db.close()
+        except ImportError as e:
+            print(f"[ClaudeTerminal] 导入失败(可能缺少tiktoken): {e}")
 
     async def stop(self):
         """停止会话并扣减 Token"""

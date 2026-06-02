@@ -126,6 +126,7 @@ def get_my_conversations(
     from app.models import TokenUsage
     from app.models.chat_history import ChatHistory
     from sqlalchemy import func as sa_func, desc
+    from sqlalchemy import or_ as sa_or
 
     from datetime import datetime, timedelta
 
@@ -143,7 +144,7 @@ def get_my_conversations(
         sa_func.count(TokenUsage.id).label("call_count"),
     ).filter(
         TokenUsage.user_id == current_user.id,
-        sa_func.or_(
+        sa_or(
             TokenUsage.request_id.like(f"{prefix_chat}%"),
             TokenUsage.request_id.like(f"{prefix_ws}%"),
         ),

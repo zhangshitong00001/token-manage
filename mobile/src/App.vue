@@ -1,7 +1,8 @@
 <template>
   <div id="app">
-    <!-- 顶部导航栏 -->
+    <!-- 顶部导航栏（登录页不显示，登录页有自己的头部） -->
     <van-nav-bar
+      v-if="route.name !== 'Login'"
       :title="route.meta.title"
       :left-arrow="route.name !== 'Home'"
       @click-left="router.back()"

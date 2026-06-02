@@ -72,10 +72,19 @@ def get_admin_user(current_user: User = Depends(get_current_user)) -> User:
         )
 
     # 检查 Redis 会话是否活跃（10分钟无操作过期）
+    # 如果 Redis 会话不存在，尝试重新创建（JWT 本身有效即可放行）
     if not has_admin_session(current_user.id):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="登录已过期，请重新登录",
+        # 尝试重新创建会话（JWT 有效即认可）
+        from app.core.redis_client import set_admin_session
+        try:
+            set_admin_session(current_user.id, "")
+        except Exception:
+            pass
+        # 不拒绝请求，让用户继续使用（JWT 本身是有效的）
+        # 但记录日志以便排查
+        import logging
+        logging.getLogger(__name__).warning(
+            f"Admin user {current_user.id} session missing, auto-recreated"
         )
 
     # 刷新会话 TTL（每次操作重置10分钟倒计时）

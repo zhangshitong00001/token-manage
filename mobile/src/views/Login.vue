@@ -1,20 +1,22 @@
 <template>
   <div class="page">
     <div class="login-header">
+      <div class="logo-icon">🪙</div>
       <h2>TokenManager</h2>
-      <p>欢迎回来</p>
+      <p>验证码登录，便捷安全</p>
     </div>
 
     <!-- 登录/注册 标签切换 -->
     <van-tabs v-model:active="activeTab" color="#667eea" title-active-color="#667eea" class="auth-tabs">
       <van-tab title="登录" name="login">
         <van-form @submit="onLogin">
-          <van-cell-group inset>
+          <van-cell-group inset class="form-card">
             <van-field
               v-model="email"
               name="email"
               label="邮箱"
               placeholder="请输入邮箱"
+              clearable
               :rules="[{ required: true, message: '请输入邮箱' }, { pattern: /@/, message: '邮箱格式不正确' }]"
             >
               <template #button>
@@ -39,8 +41,16 @@
               :rules="[{ required: true, message: '请输入验证码' }, { pattern: /^\d{6}$/, message: '请输入6位数字验证码' }]"
             />
           </van-cell-group>
-          <div style="margin: 16px;">
-            <van-button round block type="primary" native-type="submit" :loading="loading">
+
+          <!-- 记住我 -->
+          <div class="remember-row">
+            <van-checkbox v-model="rememberMe" checked-color="#667eea" shape="square">
+              <span class="remember-label">记住我<span class="remember-sub">（30天内免登录）</span></span>
+            </van-checkbox>
+          </div>
+
+          <div style="margin: 16px 16px 8px;">
+            <van-button round block type="primary" native-type="submit" :loading="loading" class="login-btn">
               登录
             </van-button>
           </div>
@@ -49,12 +59,13 @@
 
       <van-tab title="注册" name="register">
         <van-form @submit="onRegister">
-          <van-cell-group inset>
+          <van-cell-group inset class="form-card">
             <van-field
               v-model="regEmail"
               name="regEmail"
               label="邮箱"
               placeholder="请输入邮箱"
+              clearable
               :rules="[{ required: true, message: '请输入邮箱' }, { pattern: /@/, message: '邮箱格式不正确' }]"
             >
               <template #button>
@@ -83,6 +94,7 @@
               name="regNickname"
               label="昵称"
               placeholder="请输入昵称（选填）"
+              clearable
             />
             <van-field
               v-model="regPassword"
@@ -93,8 +105,8 @@
               :rules="[{ required: true, message: '请设置密码' }, { pattern: /^.{6,}$/, message: '密码至少6位' }]"
             />
           </van-cell-group>
-          <div style="margin: 16px;">
-            <van-button round block type="primary" native-type="submit" :loading="regLoading">
+          <div style="margin: 16px 16px 8px;">
+            <van-button round block type="primary" native-type="submit" :loading="regLoading" class="login-btn">
               注册
             </van-button>
           </div>
@@ -118,6 +130,7 @@ const code = ref('')
 const loading = ref(false)
 const sendingCode = ref(false)
 const countdown = ref(0)
+const rememberMe = ref(true)  // 默认记住30天
 
 // 注册
 const regEmail = ref('')
@@ -169,9 +182,14 @@ async function onSendCode() {
 async function onLogin() {
   loading.value = true
   try {
-    const res = await api.post('/auth/code-login', { email: email.value, code: code.value, remember_me: true })
+    const res = await api.post('/auth/code-login', {
+      email: email.value,
+      code: code.value,
+      remember_me: rememberMe.value
+    })
     localStorage.setItem('token', res.access_token)
     localStorage.setItem('user', JSON.stringify(res.user))
+    localStorage.setItem('login_remember', rememberMe.value ? '30d' : '1d')
     logAction('login', '/login', `用户登录成功: ${email.value}`)
     showToast('登录成功')
     router.push('/home')
@@ -230,40 +248,91 @@ onUnmounted(() => {
 <style scoped>
 .page {
   min-height: 100vh;
+  min-height: 100dvh;
   display: flex;
   flex-direction: column;
-  justify-content: center;
-  padding: 0 16px;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  padding: 0;
+  overflow-y: auto;
+  background: linear-gradient(180deg, #667eea 0%, #764ba2 100%);
 }
 
 .login-header {
   text-align: center;
-  margin-bottom: 20px;
+  padding: 48px 16px 24px;
   color: #fff;
 }
+.login-header .logo-icon {
+  font-size: 48px;
+  margin-bottom: 8px;
+}
 .login-header h2 {
-  font-size: 28px;
+  font-size: 26px;
   margin: 0;
   font-weight: 700;
+  letter-spacing: 2px;
 }
 .login-header p {
   font-size: 14px;
-  margin: 8px 0 0;
+  margin: 6px 0 0;
   opacity: 0.8;
 }
 
 .auth-tabs {
+  flex: 1;
   background: transparent;
+  padding: 0 16px 20px;
 }
 .auth-tabs :deep(.van-tabs__wrap) {
-  margin-bottom: 16px;
+  margin-bottom: 12px;
+  background: transparent;
 }
 .auth-tabs :deep(.van-tab) {
   color: rgba(255,255,255,0.7);
+  font-size: 15px;
 }
 .auth-tabs :deep(.van-tab--active) {
   color: #fff;
   font-weight: 600;
+}
+.auth-tabs :deep(.van-tabs__line) {
+  background: #fff;
+  height: 3px;
+  border-radius: 2px;
+}
+.auth-tabs :deep(.van-tabs__content) {
+  background: transparent;
+}
+
+.form-card {
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.08);
+}
+
+.remember-row {
+  display: flex;
+  align-items: center;
+  padding: 10px 20px 0;
+}
+.remember-label {
+  font-size: 13px;
+  color: rgba(255,255,255,0.9);
+}
+.remember-sub {
+  font-size: 11px;
+  color: rgba(255,255,255,0.6);
+  margin-left: 2px;
+}
+
+.login-btn {
+  height: 44px;
+  font-size: 16px;
+  font-weight: 600;
+  border: none;
+  background: linear-gradient(135deg, #667eea, #764ba2);
+  box-shadow: 0 4px 12px rgba(102,126,234,0.4);
+}
+.login-btn:active {
+  opacity: 0.9;
 }
 </style>
