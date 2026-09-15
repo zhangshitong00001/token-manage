@@ -6,7 +6,7 @@ DeepSeek 官方用量同步脚本
 用法:
   python scripts/sync_deepseek_usage.py                  # 同步本月
   python scripts/sync_deepseek_usage.py --month 5 --year 2026
-  python scripts/sync_deepseek_usage.py --today          # 仅同步今天
+  python scripts/sync_deepseek_usage.py --today          # 同步今天+昨天（今天无数据时回退到昨天）
 
 环境变量:
   DEEPSEEK_AUTH_TOKEN   DeepSeek 平台 Bearer Token（必填）
@@ -16,7 +16,7 @@ import os
 import sys
 import json
 import argparse
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 
 import requests
@@ -166,7 +166,7 @@ def main():
     parser = argparse.ArgumentParser(description="DeepSeek 官方用量同步")
     parser.add_argument("--month", type=int, default=None, help="月份 (默认当前月)")
     parser.add_argument("--year", type=int, default=None, help="年份 (默认当前年)")
-    parser.add_argument("--today", action="store_true", help="仅同步今天")
+    parser.add_argument("--today", action="store_true", help="仅同步今天和昨天（今天无数据时自动回退到昨天）")
     args = parser.parse_args()
 
     token = os.environ.get("DEEPSEEK_AUTH_TOKEN")
@@ -191,10 +191,15 @@ def main():
 
     if args.today:
         today_str = today.isoformat()
-        records = [r for r in records if r["stats_date"] == today_str]
+        yesterday_str = (today - timedelta(days=1)).isoformat()
+        target = {today_str, yesterday_str}
+        records = [r for r in records if r["stats_date"] in target]
         if not records:
-            print(f"ℹ️  今天 ({today_str}) 暂无数据")
+            print(f"ℹ️  今天 ({today_str}) 和昨天 ({yesterday_str}) 均暂无数据")
             return
+        if not any(r["stats_date"] == today_str for r in records):
+            print(f"ℹ️  今天 ({today_str}) 暂无数据（DeepSeek 侧当天数据通常稍晚才出现），"
+                  f"已同步昨天 ({yesterday_str})")
 
     print(f"📊 共 {len(records)} 天有数据:")
     for r in records:
