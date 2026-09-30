@@ -178,16 +178,30 @@ def main():
     month = args.month or today.month
     year = args.year or today.year
 
-    print(f"📡 正在从 DeepSeek 拉取 {year}年{month}月 数据...")
+    # --today 需覆盖「今天+昨天」。月初 1~2 号时"昨天"落在上个月，
+    # 只拉当前月会静默漏掉昨天（无报错、无数据提示），故连带拉取上月。
+    targets = [(year, month)]
+    if args.today and args.month is None and args.year is None:
+        _y = today - timedelta(days=1)
+        if (_y.year, _y.month) != (year, month):
+            targets.append((_y.year, _y.month))
 
-    try:
-        amount_data = get_deepseek_data("amount", month, year, token)
-        cost_data = get_deepseek_data("cost", month, year, token)
-    except Exception as e:
-        print(f"❌ 请求 DeepSeek API 失败: {e}", file=sys.stderr)
-        sys.exit(1)
+    records = []
+    for (t_year, t_month) in targets:
+        print(f"📡 正在从 DeepSeek 拉取 {t_year}年{t_month}月 数据...")
 
-    records = compute_daily_usage(amount_data, cost_data)
+        try:
+            amount_data = get_deepseek_data("amount", t_month, t_year, token)
+            cost_data = get_deepseek_data("cost", t_month, t_year, token)
+        except Exception as e:
+            print(f"❌ 请求 DeepSeek API 失败: {e}", file=sys.stderr)
+            sys.exit(1)
+
+        records.extend(compute_daily_usage(amount_data, cost_data))
+
+    # 去重 + 按日期排序（跨月拉取时可能出现同日期；upsert 亦按 stats_date 幂等）
+    _merged = {r["stats_date"]: r for r in records}
+    records = [_merged[d] for d in sorted(_merged)]
 
     if args.today:
         today_str = today.isoformat()
